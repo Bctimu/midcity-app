@@ -1,23 +1,27 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>QR Code Generator</title>
-  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.min.js"></script>
-  <script src="https://unpkg.com/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
+  <meta charset="UTF-8" />
+  <title>QR Generator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-  <style>
-    #qrcode { margin-top: 20px; }
-  </style>
+  <script src="https://openfpcdn.io/fingerprintjs/v3"></script>
 </head>
 <body>
-  <h1>Generate Your QR Code</h1>
-  <div id="status">Initializing…</div>
-  <canvas id="qrcode"></canvas>
-  <div id="timer"></div>
+  <h1>Generate QR Token</h1>
+
+  <div id="qrcode"></div>
+  <p id="status">Waiting...</p>
+  <p id="timer"></p>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import {
+      getFirestore,
+      doc,
+      setDoc,
+      serverTimestamp,
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
@@ -41,8 +45,10 @@
       const combined = `${uid}-${fingerprint}`;
       const hash = CryptoJS.SHA256(combined).toString();
 
-      const expiration = new Date(Date.now() + 60000); // 1 min from now
-      const docRef = await addDoc(collection(db, "valid_tokens"), {
+      const expiration = new Date(Date.now() + 60000); // expires in 1 minute
+
+      // Save token with hash as doc ID in Firestore
+      await setDoc(doc(db, "valid_tokens", hash), {
         hash,
         uid,
         fingerprint,
@@ -50,8 +56,9 @@
         expiresAt: expiration.toISOString()
       });
 
-      const url = `${location.origin}/midcity-app/scan.html?token=${hash}`;
-      QRCode.toCanvas(document.getElementById("qrcode"), url);
+      // Generate QR code showing only the hash token
+      QRCode.toCanvas(document.getElementById("qrcode"), hash);
+
       document.getElementById("status").textContent = "✅ QR Code Ready";
 
       const countdown = setInterval(() => {
@@ -64,9 +71,8 @@
       }, 1000);
     }
 
-    const params = new URLSearchParams(location.search);
-    const uid = params.get("uid") || "guest";
-    generateQR(uid);
+    // Example usage: replace with actual user ID
+    generateQR("user123");
   </script>
 </body>
 </html>
