@@ -3,36 +3,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>QR Token Generator</title>
+  <title>QR Code Generator</title>
 
-  <!-- Load CryptoJS globally -->
+  <!-- Load CryptoJS -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    #qrcode { margin-top: 20px; }
-    #status, #timer { margin-top: 10px; font-size: 1.2em; }
-  </style>
+  <!-- Load QRCode globally -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+
+  <!-- Load FingerprintJS globally -->
+  <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
 </head>
 <body>
-
-  <h1>Your QR Token</h1>
-
+  <h1>Generate QR Code</h1>
   <canvas id="qrcode"></canvas>
-  <div id="status">Loading...</div>
-  <div id="timer"></div>
+  <p id="status">Loading...</p>
+  <p id="timer"></p>
 
   <script type="module">
-    import FingerprintJS from "https://openfpcdn.io/fingerprintjs/v3";
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import {
-      getFirestore,
-      collection,
-      addDoc,
-      serverTimestamp
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-    import QRCode from "https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+    // Your Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -46,29 +38,22 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    function getUIDFromURL() {
+    // Helper: Get URL parameter 'uid'
+    function getUid() {
       const params = new URLSearchParams(window.location.search);
-      return params.get('uid');
+      return params.get("uid");
     }
 
-    let countdown;
-
     async function generateQR(uid) {
-      if (!uid) {
-        document.getElementById("status").textContent = "❌ No UID found in URL.";
-        return;
-      }
-
-      if (countdown) clearInterval(countdown);
-
-      const fp = await FingerprintJS.load();
+      const fpPromise = FingerprintJS.load();
+      const fp = await fpPromise;
       const result = await fp.get();
       const fingerprint = result.visitorId;
 
       const combined = `${uid}-${fingerprint}`;
       const hash = CryptoJS.SHA256(combined).toString();
 
-      const expiration = new Date(Date.now() + 60000); // 1 min expiration
+      const expiration = new Date(Date.now() + 60000); // 1 minute from now
 
       await addDoc(collection(db, "valid_tokens"), {
         hash,
@@ -80,25 +65,32 @@
 
       const url = `${location.origin}/midcity-app/scan.html?token=${hash}`;
       await QRCode.toCanvas(document.getElementById("qrcode"), url);
-
       document.getElementById("status").textContent = "✅ QR Code Ready";
 
-      countdown = setInterval(() => {
+      const countdown = setInterval(() => {
         const seconds = Math.floor((expiration - new Date()) / 1000);
-        if (seconds >= 0) {
-          document.getElementById("timer").textContent = `⏳ Expires in ${seconds}s`;
-        } else {
+        document.getElementById("timer").textContent = `⏳ Expires in ${seconds}s`;
+        if (seconds <= 0) {
           clearInterval(countdown);
           document.getElementById("timer").textContent = "⌛ Expired";
         }
       }, 1000);
     }
 
-    // On page load, get uid from URL and generate QR
-    window.addEventListener("DOMContentLoaded", () => {
-      const uid = getUIDFromURL();
-      generateQR(uid);
-    });
+    // Main flow
+    (async () => {
+      const uid = getUid();
+      if (!uid) {
+        document.getElementById("status").textContent = "❌ UID missing in URL";
+        return;
+      }
+      try {
+        await generateQR(uid);
+      } catch (error) {
+        document.getElementById("status").textContent = "❌ Error generating QR";
+        console.error(error);
+      }
+    })();
   </script>
 </body>
 </html>
