@@ -1,78 +1,79 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>QR Generator</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-  <script src="https://openfpcdn.io/fingerprintjs/v3"></script>
-</head>
-<body>
-  <h1>Generate QR Token</h1>
+<script type="module">
+  import FingerprintJS from "https://openfpcdn.io/fingerprintjs/v3";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, addDoc, serverTimestamp, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import CryptoJS from "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js";
+  import QRCode from "https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js";
 
-  <div id="qrcode"></div>
-  <p id="status">Waiting...</p>
-  <p id="timer"></p>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
+    authDomain: "admin-17c3d.firebaseapp.com",
+    projectId: "admin-17c3d",
+    storageBucket: "admin-17c3d.appspot.com",
+    messagingSenderId: "456331474186",
+    appId: "1:456331474186:web:0385a740d37862f82af6f3",
+    measurementId: "G-DTP30VXLN7"
+  };
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import {
-      getFirestore,
-      doc,
-      setDoc,
-      serverTimestamp,
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
-      authDomain: "admin-17c3d.firebaseapp.com",
-      projectId: "admin-17c3d",
-      storageBucket: "admin-17c3d.appspot.com",
-      messagingSenderId: "456331474186",
-      appId: "1:456331474186:web:0385a740d37862f82af6f3",
-      measurementId: "G-DTP30VXLN7"
-    };
+  async function generateQR(uid) {
+    const fp = await FingerprintJS.load();
+    const result = await fp.get();
+    const fingerprint = result.visitorId;
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    const combined = `${uid}-${fingerprint}`;
+    const hash = CryptoJS.SHA256(combined).toString();
 
-    async function generateQR(uid) {
-      const fpPromise = FingerprintJS.load();
-      const fp = await fpPromise;
-      const result = await fp.get();
-      const fingerprint = result.visitorId;
+    const expiration = new Date(Date.now() + 60000); // 1 minute from now
+    await addDoc(collection(db, "valid_tokens"), {
+      hash,
+      uid,
+      fingerprint,
+      timestamp: serverTimestamp(),
+      expiresAt: expiration.toISOString()
+    });
 
-      const combined = `${uid}-${fingerprint}`;
-      const hash = CryptoJS.SHA256(combined).toString();
+    const url = `${location.origin}/midcity-app/scan.html?token=${hash}`;
+    QRCode.toCanvas(document.getElementById("qrcode"), url);
+    document.getElementById("status").textContent = "✅ QR Code Ready";
 
-      const expiration = new Date(Date.now() + 60000); // expires in 1 minute
+    const countdown = setInterval(() => {
+      const seconds = Math.floor((expiration - new Date()) / 1000);
+      document.getElementById("timer").textContent = `⏳ Expires in ${seconds}s`;
+      if (seconds <= 0) {
+        clearInterval(countdown);
+        document.getElementById("timer").textContent = "⌛ Expired";
+      }
+    }, 1000);
+  }
 
-      // Save token with hash as doc ID in Firestore
-      await setDoc(doc(db, "valid_tokens", hash), {
-        hash,
-        uid,
-        fingerprint,
-        timestamp: serverTimestamp(),
-        expiresAt: expiration.toISOString()
-      });
+  async function scanQRAndValidate(token) {
+    const tokensRef = collection(db, "valid_tokens");
+    const querySnapshot = await getDoc(doc(db, "valid_tokens", token));
 
-      // Generate QR code showing only the hash token
-      QRCode.toCanvas(document.getElementById("qrcode"), hash);
-
-      document.getElementById("status").textContent = "✅ QR Code Ready";
-
-      const countdown = setInterval(() => {
-        const seconds = Math.floor((expiration - new Date()) / 1000);
-        document.getElementById("timer").textContent = `⏳ Expires in ${seconds}s`;
-        if (seconds <= 0) {
-          clearInterval(countdown);
-          document.getElementById("timer").textContent = "⌛ Expired";
-        }
-      }, 1000);
+    if (!querySnapshot.exists()) {
+      document.getElementById("result").textContent = "❌ Invalid Token";
+      return;
     }
 
-    // Example usage: replace with actual user ID
-    generateQR("user123");
-  </script>
-</body>
-</html>
+    const tokenData = querySnapshot.data();
+    const fp = await FingerprintJS.load();
+    const result = await fp.get();
+    const currentFingerprint = result.visitorId;
+    const now = new Date();
+
+    if (tokenData.expiresAt && new Date(tokenData.expiresAt) < now) {
+      document.getElementById("result").textContent = "⌛ Token Expired";
+    } else if (tokenData.fingerprint !== currentFingerprint) {
+      document.getElementById("result").textContent = "❌ Fingerprint Mismatch";
+    } else {
+      document.getElementById("result").textContent = "✅ Valid Token";
+    }
+  }
+
+  // Example usage:
+  // generateQR("USER_ID_HERE");
+  // scanQRAndValidate("TOKEN_HASH_HERE");
+</script>
