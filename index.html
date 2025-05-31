@@ -1,90 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
   <title>QR Code Generator</title>
-  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 50px;
+    }
+    #qrcode {
+      margin: 20px auto;
+    }
+    #status {
+      font-size: 1.2rem;
+      margin-top: 20px;
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Generate QR Code</h1>
-    <div id="qr-code"></div>
-    <button id="generate-btn">Generate QR</button>
-    <p id="countdown"></p>
-  </div>
+  <h1>Resident QR Code</h1>
+  <canvas id="qrcode"></canvas>
+  <div id="status">⏳ Generating...</div>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
-    import QRCode from "https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID,
-      measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
+      authDomain: "admin-17c3d.firebaseapp.com",
+      projectId: "admin-17c3d",
+      storageBucket: "admin-17c3d.appspot.com",
+      messagingSenderId: "456331474186",
+      appId: "1:456331474186:web:0385a740d37862f82af6f3",
+      measurementId: "G-DTP30VXLN7"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    const generateBtn = document.getElementById("generate-btn");
-    const qrCodeContainer = document.getElementById("qr-code");
-    const countdownEl = document.getElementById("countdown");
+    function generateToken(uid) {
+      const hash = btoa(uid + Date.now()).slice(0, 16);
+      const tokenData = {
+        uid: uid,
+        hash: hash,
+        created_at: Date.now(),
+        expires_at: Date.now() + 60 * 1000 // 1 minute
+      };
 
-    const getUserIdFromURL = () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.get("uid");
-    };
-
-    function generateToken() {
-      return Math.random().toString(36).substr(2) + Date.now().toString(36);
-    }
-
-    function startCountdown(duration) {
-      let timeLeft = duration;
-      countdownEl.textContent = `QR expires in ${timeLeft} seconds`;
-
-      const timer = setInterval(() => {
-        timeLeft--;
-        countdownEl.textContent = `QR expires in ${timeLeft} seconds`;
-        if (timeLeft <= 0) {
-          clearInterval(timer);
-          countdownEl.textContent = "QR Code expired.";
-          qrCodeContainer.innerHTML = "";
-        }
-      }, 1000);
-    }
-
-    generateBtn.addEventListener("click", async () => {
-      const uid = getUserIdFromURL();
-      if (!uid) {
-        alert("No UID found in URL.");
-        return;
-      }
-
-      const token = generateToken();
-      const expiration = Date.now() + 60000; // 1 minute in ms
-
-      const qrData = JSON.stringify({ uid, token, expiration });
-      QRCode.toCanvas(document.createElement("canvas"), qrData, async (err, canvas) => {
-        if (err) return console.error(err);
-        qrCodeContainer.innerHTML = "";
-        qrCodeContainer.appendChild(canvas);
-
-        await setDoc(doc(db, "valid_tokens", token), {
-          uid,
-          expiration,
-          used: false
+      // Store token in Firestore
+      setDoc(doc(db, "tokens", hash), tokenData).then(() => {
+        const qrUrl = `${window.location.origin}/scanner.html?token=${hash}`;
+        QRCode.toCanvas(document.getElementById("qrcode"), qrUrl, { width: 250 }, function (error) {
+          if (error) console.error(error);
         });
 
-        startCountdown(60);
+        // Show countdown
+        const status = document.getElementById("status");
+        const interval = setInterval(() => {
+          const timeLeft = Math.max(0, Math.floor((tokenData.expires_at - Date.now()) / 1000));
+          status.textContent = timeLeft > 0
+            ? `⏳ Expires in ${timeLeft}s`
+            : "❌ QR Code Expired";
+          if (timeLeft <= 0) clearInterval(interval);
+        }, 1000);
       });
-    });
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const uid = params.get("uid");
+    if (uid) {
+      generateToken(uid);
+    } else {
+      document.getElementById("status").textContent = "❌ No UID provided in URL";
+    }
   </script>
 </body>
 </html>
