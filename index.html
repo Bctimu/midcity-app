@@ -1,32 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
   <title>QR Code Generator</title>
+  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.min.js"></script>
+  <script src="https://unpkg.com/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin-top: 50px;
-    }
-    #qrcode {
-      margin: 20px auto;
-    }
-    #status {
-      font-size: 1.2rem;
-      margin-top: 20px;
-    }
+    #qrcode { margin-top: 20px; }
   </style>
 </head>
 <body>
-  <h1>Resident QR Code</h1>
+  <h1>Generate Your QR Code</h1>
+  <div id="status">Initializing…</div>
   <canvas id="qrcode"></canvas>
-  <div id="status">⏳ Generating...</div>
+  <div id="timer"></div>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
@@ -41,41 +32,41 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    function generateToken(uid) {
-      const hash = btoa(uid + Date.now()).slice(0, 16);
-      const tokenData = {
-        uid: uid,
-        hash: hash,
-        created_at: Date.now(),
-        expires_at: Date.now() + 60 * 1000 // 1 minute
-      };
+    async function generateQR(uid) {
+      const fpPromise = FingerprintJS.load();
+      const fp = await fpPromise;
+      const result = await fp.get();
+      const fingerprint = result.visitorId;
 
-      // Store token in Firestore
-      setDoc(doc(db, "tokens", hash), tokenData).then(() => {
-        const qrUrl = `${window.location.origin}/scanner.html?token=${hash}`;
-        QRCode.toCanvas(document.getElementById("qrcode"), qrUrl, { width: 250 }, function (error) {
-          if (error) console.error(error);
-        });
+      const combined = `${uid}-${fingerprint}`;
+      const hash = CryptoJS.SHA256(combined).toString();
 
-        // Show countdown
-        const status = document.getElementById("status");
-        const interval = setInterval(() => {
-          const timeLeft = Math.max(0, Math.floor((tokenData.expires_at - Date.now()) / 1000));
-          status.textContent = timeLeft > 0
-            ? `⏳ Expires in ${timeLeft}s`
-            : "❌ QR Code Expired";
-          if (timeLeft <= 0) clearInterval(interval);
-        }, 1000);
+      const expiration = new Date(Date.now() + 60000); // 1 min from now
+      const docRef = await addDoc(collection(db, "valid_tokens"), {
+        hash,
+        uid,
+        fingerprint,
+        timestamp: serverTimestamp(),
+        expiresAt: expiration.toISOString()
       });
+
+      const url = `${location.origin}/midcity-app/scan.html?token=${hash}`;
+      QRCode.toCanvas(document.getElementById("qrcode"), url);
+      document.getElementById("status").textContent = "✅ QR Code Ready";
+
+      const countdown = setInterval(() => {
+        const seconds = Math.floor((expiration - new Date()) / 1000);
+        document.getElementById("timer").textContent = `⏳ Expires in ${seconds}s`;
+        if (seconds <= 0) {
+          clearInterval(countdown);
+          document.getElementById("timer").textContent = "⌛ Expired";
+        }
+      }, 1000);
     }
 
-    const params = new URLSearchParams(window.location.search);
-    const uid = params.get("uid");
-    if (uid) {
-      generateToken(uid);
-    } else {
-      document.getElementById("status").textContent = "❌ No UID provided in URL";
-    }
+    const params = new URLSearchParams(location.search);
+    const uid = params.get("uid") || "guest";
+    generateQR(uid);
   </script>
 </body>
 </html>
