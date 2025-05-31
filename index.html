@@ -42,7 +42,7 @@
       const hash = CryptoJS.SHA256(combined).toString();
 
       const expiration = new Date(Date.now() + 60000); // 1 min from now
-      const docRef = await addDoc(collection(db, "valid_tokens"), {
+      const docRef = await addDoc(collection(db, "tokens"), {
         hash,
         uid,
         fingerprint,
