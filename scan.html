@@ -2,43 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>QR Token Scanner</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f7f8fa;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      color: #333;
-    }
-    h1 {
-      margin-bottom: 10px;
-    }
-    #result {
-      font-size: 1.5rem;
-      padding: 20px 30px;
-      border-radius: 10px;
-      background-color: #fff;
-      box-shadow: 0 0 15px rgba(0,0,0,0.1);
-      text-align: center;
-      max-width: 400px;
-    }
-  </style>
-</head>
-<body>
-  <h1>🔍 Scanning Token...</h1>
-  <div id="result">Processing...</div>
-
-  <script src="https://openfpcdn.io/fingerprintjs/v3"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MidCity Live QR Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getFirestore, collection, getDocs, query, where, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import {
+      getFirestore,
+      collection,
+      query,
+      where,
+      getDocs,
+      doc,
+      getDoc,
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+    // Firebase config — replace with your own config
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -46,65 +26,103 @@
       storageBucket: "admin-17c3d.appspot.com",
       messagingSenderId: "456331474186",
       appId: "1:456331474186:web:0385a740d37862f82af6f3",
-      measurementId: "G-DTP30VXLN7"
+      measurementId: "G-DTP30VXLN7",
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    async function scanQR() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get("token");
-      const resultDiv = document.getElementById("result");
-
-      if (!token) {
-        resultDiv.textContent = "❌ No token provided.";
-        return;
-      }
-
-      const fpPromise = FingerprintJS.load();
-      const fp = await fpPromise;
+    async function getFingerprint() {
+      const fp = await FingerprintJS.load();
       const result = await fp.get();
-      const currentFingerprint = result.visitorId;
-
-      const q = query(collection(db, "valid_tokens"), where("hash", "==", token));
-      const snapshot = await getDocs(q);
-
-      if (snapshot.empty) {
-        resultDiv.textContent = "❌ Invalid token.";
-        return;
-      }
-
-      let matchFound = false;
-
-      for (const docSnap of snapshot.docs) {
-        const data = docSnap.data();
-        const storedFingerprint = data.fingerprint;
-        const expiresAt = new Date(data.expiresAt);
-
-        if (storedFingerprint !== currentFingerprint) {
-          resultDiv.textContent = "❌ This QR code was generated on a different device.";
-          return;
-        }
-
-        if (expiresAt < new Date()) {
-          resultDiv.textContent = "⌛ This QR code has expired.";
-          return;
-        }
-
-        // All checks passed!
-        await deleteDoc(doc(db, "valid_tokens", docSnap.id));
-        resultDiv.textContent = "✅ Token is valid!";
-        matchFound = true;
-        break;
-      }
-
-      if (!matchFound) {
-        resultDiv.textContent = "❌ Token check failed.";
-      }
+      return result.visitorId;
     }
 
-    window.onload = scanQR;
+    // Validate the token in Firestore
+    async function validateToken(tokenHash) {
+      const docRef = doc(db, "valid_tokens", tokenHash);
+      const docSnap = await getDoc(docRef);
+
+      if (!docSnap.exists()) {
+        return { valid: false, reason: "Token not found" };
+      }
+
+      const data = docSnap.data();
+
+      // Check expiration
+      const expiresAt = new Date(data.expiresAt);
+      if (expiresAt < new Date()) {
+        return { valid: false, reason: "Token expired" };
+      }
+
+      // Check fingerprint
+      const currentFp = await getFingerprint();
+      if (currentFp !== data.fingerprint) {
+        return { valid: false, reason: "Fingerprint mismatch" };
+      }
+
+      return { valid: true, uid: data.uid };
+    }
+
+    function updateStatus(text, color) {
+      const statusEl = document.getElementById("status");
+      statusEl.textContent = text;
+      statusEl.style.color = color;
+    }
+
+    window.onload = async () => {
+      updateStatus("🎥 Initializing scanner...", "black");
+
+      const html5QrCode = new Html5Qrcode("reader");
+
+      const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
+        html5QrCode.pause();
+
+        updateStatus("⌛ Validating QR code...", "orange");
+
+        try {
+          const tokenHash = decodedText.trim();
+
+          // Validate token
+          const validation = await validateToken(tokenHash);
+
+          if (validation.valid) {
+            updateStatus(`✅ Valid token for UID: ${validation.uid}`, "green");
+          } else {
+            if (validation.reason === "Token expired") {
+              updateStatus("⌛ QR code expired", "gray");
+            } else {
+              updateStatus(`❌ Invalid token: ${validation.reason}`, "red");
+            }
+          }
+        } catch (err) {
+          updateStatus("❌ Error validating QR code", "red");
+          console.error(err);
+        }
+      };
+
+      const config = {
+        fps: 10,
+        qrbox: 250,
+      };
+
+      try {
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          qrCodeSuccessCallback
+        );
+        updateStatus("✅ Scanner ready. Show QR code.", "green");
+      } catch (err) {
+        updateStatus("❌ Unable to start scanner.", "red");
+        console.error(err);
+      }
+    };
   </script>
+</head>
+<body>
+  <h1>MidCity Live QR Code Scanner</h1>
+  <div id="reader" style="width: 300px; height: 300px; margin-bottom: 20px;"></div>
+  <div id="status" style="font-weight: bold; font-size: 1.2rem;"></div>
 </body>
 </html>
