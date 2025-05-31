@@ -1,18 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>QR Scanner</title>
-  <script src="https://unpkg.com/html5-qrcode"></script>
-  <style>
-    #reader { width: 300px; margin-top: 20px; }
-    #result { font-size: 1.5rem; margin-top: 20px; }
-  </style>
-</head>
-<body>
-  <h1>Scan Resident QR</h1>
-  <div id="reader"></div>
-  <div id="result">Waiting for scan…</div>
-
+  <title>QR Token Scanner</title>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -30,47 +19,46 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    const resultContainer = document.getElementById("result");
+    async function validateToken() {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
+      const statusEl = document.getElementById("status");
 
-    async function checkToken(token) {
-      const q = query(collection(db, "valid_tokens"), where("hash", "==", token));
-      const snapshot = await getDocs(q);
-
-      if (snapshot.empty) {
-        resultContainer.textContent = "❌ Invalid QR Code";
-        resultContainer.style.color = "red";
+      if (!token) {
+        statusEl.textContent = "❌ No token provided.";
         return;
       }
 
-      const data = snapshot.docs[0].data();
-      const expiresAt = new Date(data.expiresAt);
-
-      if (new Date() > expiresAt) {
-        resultContainer.textContent = "⚠️ Expired QR Code";
-        resultContainer.style.color = "orange";
-      } else {
-        resultContainer.textContent = "✅ Verified Resident";
-        resultContainer.style.color = "green";
-      }
-    }
-
-    function onScanSuccess(decodedText) {
       try {
-        const url = new URL(decodedText);
-        const token = url.searchParams.get("token");
-        if (token) checkToken(token);
-        else throw new Error("No token");
-      } catch {
-        resultContainer.textContent = "❌ Invalid QR format";
-        resultContainer.style.color = "red";
+        const q = query(collection(db, "valid_tokens"), where("hash", "==", token));
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+          statusEl.textContent = "❌ Token not found.";
+          return;
+        }
+
+        const doc = snapshot.docs[0];
+        const data = doc.data();
+        const now = new Date();
+
+        if (new Date(data.expiresAt) > now) {
+          statusEl.textContent = "✅ Token is valid!";
+        } else {
+          statusEl.textContent = "⌛ Token has expired.";
+        }
+
+      } catch (error) {
+        console.error("Error checking token:", error);
+        statusEl.textContent = "❌ An error occurred.";
       }
     }
 
-    new Html5Qrcode("reader").start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      onScanSuccess
-    );
+    window.addEventListener("DOMContentLoaded", validateToken);
   </script>
+</head>
+<body>
+  <h1>Scan Result</h1>
+  <p id="status">🔍 Validating...</p>
 </body>
 </html>
