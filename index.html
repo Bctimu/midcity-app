@@ -5,36 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>QR Token Generator</title>
 
-  <!-- Load CryptoJS globally (not as ES module) -->
+  <!-- Load CryptoJS globally -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     #qrcode { margin-top: 20px; }
-    #status, #timer, #result { margin-top: 10px; font-size: 1.2em; }
+    #status, #timer { margin-top: 10px; font-size: 1.2em; }
   </style>
 </head>
 <body>
 
-  <h1>Generate QR Token</h1>
-
-  <label>
-    User ID:
-    <input type="text" id="uidInput" placeholder="Enter UID" />
-  </label>
-  <button id="generateBtn">Generate QR Code</button>
+  <h1>Your QR Token</h1>
 
   <canvas id="qrcode"></canvas>
-  <div id="status"></div>
+  <div id="status">Loading...</div>
   <div id="timer"></div>
-
-  <h2>Scan & Validate Token</h2>
-  <label>
-    Token:
-    <input type="text" id="tokenInput" placeholder="Enter token hash" />
-  </label>
-  <button id="validateBtn">Validate Token</button>
-  <div id="result"></div>
 
   <script type="module">
     import FingerprintJS from "https://openfpcdn.io/fingerprintjs/v3";
@@ -43,12 +29,7 @@
       getFirestore,
       collection,
       addDoc,
-      serverTimestamp,
-      doc,
-      getDoc,
-      query,
-      where,
-      getDocs
+      serverTimestamp
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
     import QRCode from "https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js";
 
@@ -65,9 +46,19 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
+    function getUIDFromURL() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('uid');
+    }
+
     let countdown;
 
     async function generateQR(uid) {
+      if (!uid) {
+        document.getElementById("status").textContent = "❌ No UID found in URL.";
+        return;
+      }
+
       if (countdown) clearInterval(countdown);
 
       const fp = await FingerprintJS.load();
@@ -77,7 +68,7 @@
       const combined = `${uid}-${fingerprint}`;
       const hash = CryptoJS.SHA256(combined).toString();
 
-      const expiration = new Date(Date.now() + 60000); // 1 min from now
+      const expiration = new Date(Date.now() + 60000); // 1 min expiration
 
       await addDoc(collection(db, "valid_tokens"), {
         hash,
@@ -88,7 +79,6 @@
       });
 
       const url = `${location.origin}/midcity-app/scan.html?token=${hash}`;
-
       await QRCode.toCanvas(document.getElementById("qrcode"), url);
 
       document.getElementById("status").textContent = "✅ QR Code Ready";
@@ -104,54 +94,10 @@
       }, 1000);
     }
 
-    async function validateToken(token) {
-      document.getElementById("result").textContent = "Checking...";
-
-      // Query Firestore for the document with this token hash
-      const tokensRef = collection(db, "valid_tokens");
-      const q = query(tokensRef, where("hash", "==", token));
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-        document.getElementById("result").textContent = "❌ Invalid Token";
-        return;
-      }
-
-      // Assume first match (hashes should be unique)
-      const tokenDoc = querySnapshot.docs[0];
-      const tokenData = tokenDoc.data();
-
-      const fp = await FingerprintJS.load();
-      const result = await fp.get();
-      const currentFingerprint = result.visitorId;
-
-      const now = new Date();
-
-      if (tokenData.expiresAt && new Date(tokenData.expiresAt) < now) {
-        document.getElementById("result").textContent = "⌛ Token Expired";
-      } else if (tokenData.fingerprint !== currentFingerprint) {
-        document.getElementById("result").textContent = "❌ Fingerprint Mismatch";
-      } else {
-        document.getElementById("result").textContent = "✅ Valid Token";
-      }
-    }
-
-    document.getElementById("generateBtn").addEventListener("click", () => {
-      const uid = document.getElementById("uidInput").value.trim();
-      if (!uid) {
-        alert("Please enter a User ID.");
-        return;
-      }
+    // On page load, get uid from URL and generate QR
+    window.addEventListener("DOMContentLoaded", () => {
+      const uid = getUIDFromURL();
       generateQR(uid);
-    });
-
-    document.getElementById("validateBtn").addEventListener("click", () => {
-      const token = document.getElementById("tokenInput").value.trim();
-      if (!token) {
-        alert("Please enter a token to validate.");
-        return;
-      }
-      validateToken(token);
     });
   </script>
 </body>
