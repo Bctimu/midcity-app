@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>QR Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    #reader { width: 300px; margin-top: 20px; }
+    #result { font-size: 1.5rem; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Scan Resident QR</h1>
+  <div id="reader"></div>
+  <div id="result">Waiting for scan…</div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
+      authDomain: "admin-17c3d.firebaseapp.com",
+      projectId: "admin-17c3d",
+      storageBucket: "admin-17c3d.appspot.com",
+      messagingSenderId: "456331474186",
+      appId: "1:456331474186:web:0385a740d37862f82af6f3",
+      measurementId: "G-DTP30VXLN7"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const resultContainer = document.getElementById("result");
+
+    async function checkToken(token) {
+      const q = query(collection(db, "valid_tokens"), where("hash", "==", token));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        resultContainer.textContent = "❌ Invalid QR Code";
+        resultContainer.style.color = "red";
+        return;
+      }
+
+      const data = snapshot.docs[0].data();
+      const expiresAt = new Date(data.expiresAt);
+
+      if (new Date() > expiresAt) {
+        resultContainer.textContent = "⚠️ Expired QR Code";
+        resultContainer.style.color = "orange";
+      } else {
+        resultContainer.textContent = "✅ Verified Resident";
+        resultContainer.style.color = "green";
+      }
+    }
+
+    function onScanSuccess(decodedText) {
+      try {
+        const url = new URL(decodedText);
+        const token = url.searchParams.get("token");
+        if (token) checkToken(token);
+        else throw new Error("No token");
+      } catch {
+        resultContainer.textContent = "❌ Invalid QR format";
+        resultContainer.style.color = "red";
+      }
+    }
+
+    new Html5Qrcode("reader").start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      onScanSuccess
+    );
+  </script>
+</body>
+</html>
