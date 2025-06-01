@@ -68,13 +68,23 @@
       updateStatus("🎥 Initializing scanner...", "black");
 
       const html5QrCode = new Html5Qrcode("reader");
+      const scannedTokens = new Set(); // prevent immediate re-scans of same token
 
       const qrCodeSuccessCallback = async (decodedText) => {
         html5QrCode.pause();
+        const tokenHash = decodedText.trim();
+
+        // Avoid duplicate scanning of the same QR while it's still on screen
+        if (scannedTokens.has(tokenHash)) {
+          updateStatus("⚠️ Same QR code already scanned. Move it away.", "orange");
+          setTimeout(() => html5QrCode.resume(), 2000);
+          return;
+        }
+
+        scannedTokens.add(tokenHash);
         updateStatus("⌛ Validating QR code...", "orange");
 
         try {
-          const tokenHash = decodedText.trim();
           const validation = await validateToken(tokenHash);
 
           if (validation.valid) {
@@ -84,13 +94,12 @@
           } else {
             updateStatus(`❌ Invalid token: ${validation.reason}`, "red");
           }
-
         } catch (err) {
           console.error(err);
           updateStatus("❌ Error validating QR code", "red");
         }
 
-        // Resume scanning after 2 seconds
+        // Resume scanning after 2 seconds, but keep the status message
         setTimeout(() => html5QrCode.resume(), 2000);
       };
 
