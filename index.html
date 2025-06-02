@@ -1,14 +1,39 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>QR Code Generator</title>
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-  <script type="module">
-    // Firebase imports
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import { getFirestore, collection, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      text-align: center;
+    }
+    #qrcode {
+      margin-top: 20px;
+    }
+    button {
+      font-size: 16px;
+      padding: 10px 20px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Generate Your QR Code</h1>
+  <button id="generate-btn">Generate QR Code</button>
+  <div id="qrcode"></div>
+  <p id="status"></p>
 
-    // Your Firebase configuration
+  <!-- Firebase SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+    // Your Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -21,56 +46,71 @@
 
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // Helper: Hash input using SHA-256
-    async function hashData(data) {
-      const encoder = new TextEncoder();
-      const buffer = encoder.encode(data);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const generateBtn = document.getElementById('generate-btn');
+    const qrcodeContainer = document.getElementById('qrcode');
+    const statusText = document.getElementById('status');
+
+    // Clear QR code and status
+    function clearUI() {
+      qrcodeContainer.innerHTML = '';
+      statusText.textContent = '';
     }
 
-    // Main function: Generate QR and update Firestore
     async function generateQR() {
-      const input = document.getElementById('inputText').value.trim();
-      if (!input) {
-        alert("Please enter a value.");
+      clearUI();
+
+      const user = auth.currentUser;
+      if (!user) {
+        statusText.textContent = "You must be signed in to generate a QR code.";
         return;
       }
 
       try {
-        const hash = await hashData(input);
+        const uid = user.uid;
+        const tokenValue = `${uid}_${Date.now()}`;
 
-        // Generate QR
-        const canvas = document.getElementById('qrCanvas');
-        QRCode.toCanvas(canvas, hash, error => {
-          if (error) console.error("QR generation failed:", error);
+        // Save token to Firestore
+        await setDoc(doc(db, "valid_tokens", tokenValue), {
+          uid: uid,
+          token: tokenValue,
+          used: false,
+          createdAt: serverTimestamp(),
         });
 
-        // Save to Firestore
-        await setDoc(doc(collection(db, "valid_tokens"), hash), {
-          createdAt: new Date().toISOString(),
-          used: false
+        // Create URL with token param (update domain as needed)
+        const qrUrl = `https://yourdomain.com/scan.html?token=${encodeURIComponent(tokenValue)}`;
+
+        // Generate QR code
+        QRCode.toCanvas(qrcodeContainer, qrUrl, { width: 250 }, function (error) {
+          if (error) {
+            statusText.textContent = "Error generating QR code.";
+            console.error(error);
+          } else {
+            statusText.textContent = "QR code generated successfully!";
+          }
         });
 
-        alert("QR code generated and saved to Firestore!");
-      } catch (err) {
-        console.error("Error:", err);
-        alert("Something went wrong. See console.");
+      } catch (error) {
+        console.error("Error generating QR and saving token:", error);
+        statusText.textContent = "Failed to generate QR code.";
       }
     }
 
-    // Expose to global scope
-    window.generateQR = generateQR;
+    generateBtn.addEventListener('click', generateQR);
+
+    // Optionally, detect auth state changes and update UI or redirect
+    onAuthStateChanged(auth, user => {
+      if (!user) {
+        statusText.textContent = "Please sign in to generate a QR code.";
+        generateBtn.disabled = true;
+      } else {
+        statusText.textContent = "";
+        generateBtn.disabled = false;
+      }
+    });
   </script>
-</head>
-<body>
-  <h2>QR Code Generator</h2>
-  <input type="text" id="inputText" placeholder="Enter email, ID, etc." />
-  <button onclick="generateQR()">Generate QR</button>
-  <br><br>
-  <canvas id="qrCanvas"></canvas>
 </body>
 </html>
