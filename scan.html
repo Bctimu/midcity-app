@@ -1,91 +1,97 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>QR Scanner</title>
+  <title>QR Code Scanner</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin: 0;
-      padding: 2rem;
-      background: #f4f4f4;
+    video, canvas {
+      max-width: 100%;
+      border: 1px solid #ccc;
+      margin-top: 10px;
     }
-
-    video {
-      max-width: 500px;
-      width: 100%;
-      border: 2px solid #333;
-      border-radius: 8px;
-    }
-
-    #scan-result {
-      margin-top: 1.5rem;
-      font-size: 1.2rem;
+    #status {
+      margin-top: 15px;
       font-weight: bold;
-      color: #333;
+      font-size: 1.2em;
     }
   </style>
 </head>
 <body>
-  <h1>Scan Your Token</h1>
-  <video id="qr-video"></video>
-  <p id="scan-result">Awaiting scan...</p>
+  <h2>QR Code Scanner</h2>
+  <video id="video" muted playsinline></video>
+  <div id="status">Waiting for QR code...</div>
 
   <script type="module">
-    import QrScanner from "./qr-scanner.min.js";
-    QrScanner.WORKER_PATH = "./qr-scanner-worker.min.js";
+    import QrScanner from "./qr-scanner.min.js"; // Ensure this file is in the same folder
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
-    const videoElem = document.getElementById("qr-video");
-    const resultElem = document.getElementById("scan-result");
+    // Firebase config (same as index.html)
+    const firebaseConfig = {
+      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
+      authDomain: "admin-17c3d.firebaseapp.com",
+      projectId: "admin-17c3d",
+      storageBucket: "admin-17c3d.firebasestorage.app",
+      messagingSenderId: "456331474186",
+      appId: "1:456331474186:web:0385a740d37862f82af6f3",
+      measurementId: "G-DTP30VXLN7"
+    };
 
-    function displayMessage(message, color = "#333") {
-      resultElem.textContent = message;
-      resultElem.style.color = color;
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const video = document.getElementById('video');
+    const statusEl = document.getElementById('status');
+
+    // Hash function (SHA-256)
+    async function hashData(data) {
+      const encoder = new TextEncoder();
+      const buffer = encoder.encode(data);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    async function handleScan(scannedContent) {
-      if (!scannedContent || scannedContent.length < 10) {
-        displayMessage("Invalid QR code scanned", "red");
-        return;
-      }
-
-      try {
-        displayMessage("Verifying...", "#888");
-
-        const response = await fetch(
-          `https://admin-17c3d.web.app/.netlify/functions/verifyToken?token=${encodeURIComponent(scannedContent)}`
-        );
-
-        const data = await response.json();
-
-        if (data.success) {
-          displayMessage("✔ Token Verified! Welcome!", "green");
+    // Check Firestore if token exists and is valid
+    async function checkToken(hash) {
+      const docRef = doc(db, "valid_tokens", hash);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (!data.used) {
+          // Mark token as used
+          await updateDoc(docRef, { used: true, usedAt: new Date().toISOString() });
+          return true; // valid and not used
         } else {
-          displayMessage("✖ Invalid or Expired Token", "red");
+          return false; // already used
+        }
+      }
+      return false; // does not exist
+    }
+
+    // Setup QrScanner
+    const scanner = new QrScanner(video, async (result) => {
+      statusEl.textContent = "QR Code detected, verifying...";
+      try {
+        const hash = await hashData(result.data);
+        const valid = await checkToken(hash);
+        if (valid) {
+          statusEl.textContent = "✅ Valid QR Code! Access granted.";
+          statusEl.style.color = "green";
+        } else {
+          statusEl.textContent = "❌ Invalid or already used QR Code!";
+          statusEl.style.color = "red";
         }
       } catch (error) {
-        console.error("Error verifying token:", error);
-        displayMessage("⚠ Error connecting to server", "red");
+        statusEl.textContent = "⚠️ Error verifying QR code.";
+        statusEl.style.color = "orange";
+        console.error(error);
       }
-    }
-
-    const scanner = new QrScanner(
-      videoElem,
-      result => handleScan(result),
-      {
-        highlightScanRegion: true,
-        highlightCodeOutline: true
-      }
-    );
-
-    scanner.start().then(() => {
-      displayMessage("Camera started. Awaiting scan...");
-    }).catch(error => {
-      console.error("Camera start error:", error);
-      displayMessage("Unable to access camera", "red");
     });
+
+    // Start scanning on page load
+    scanner.start();
+
   </script>
 </body>
 </html>
