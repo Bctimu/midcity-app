@@ -4,9 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>QR Code Generator</title>
+
+  <!-- Firebase SDKs -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
     // Firebase config
     const firebaseConfig = {
@@ -22,61 +24,64 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // Helper: hash a string using SHA-256
+    // SHA-256 hash helper
     async function hashString(str) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(str);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      return [...new Uint8Array(hashBuffer)].map(b => b.toString(16).padStart(2, '0')).join('');
+      const data = new TextEncoder().encode(str);
+      const hash = await crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
+    // Generate and store token
     async function generateQRCode(uid) {
       const qrcodeContainer = document.getElementById("qrcode");
+      if (!qrcodeContainer) return console.error("Missing #qrcode container");
 
-      if (!qrcodeContainer) {
-        console.error("QR Code container not found.");
-        return;
-      }
+      const createdAt = new Date().toISOString();
+      const expiresAt = new Date(Date.now() + 1000 * 60 * 10).toISOString(); // expires in 10 minutes
+      const fingerprint = await hashString(uid);
+      const rawToken = `${uid}-${createdAt}`;
+      const hash = await hashString(rawToken);
 
-      try {
-        const timestamp = new Date().toISOString();
-        const rawToken = `${uid}-${timestamp}`;
-        const hashedToken = await hashString(rawToken);
+      const docRef = doc(db, "valid_tokens", uid);
+      await setDoc(docRef, {
+        uid,
+        fingerprint,
+        hash,
+        createdAt,
+        expiresAt,
+        timestamp: serverTimestamp()
+      });
 
-        // Save hashed token in Firestore
-        await setDoc(doc(db, "valid_tokens", uid), {
-          token: hashedToken,
-          createdAt: timestamp
-        });
+      const qrURL = `https://yourdomain.com/scan.html?token=${hash}`;
+      new QRCode(qrcodeContainer, {
+        text: qrURL,
+        width: 256,
+        height: 256
+      });
 
-        // Generate the QR code
-        const qrData = `https://yourdomain.com/scan.html?token=${hashedToken}`;
-        new QRCode(qrcodeContainer, {
-          text: qrData,
-          width: 256,
-          height: 256
-        });
-
-        console.log("QR Code generated and token saved.");
-      } catch (error) {
-        console.error("Error generating QR or saving token:", error);
-      }
+      console.log("QR code generated and stored successfully.");
     }
 
-    // Main execution
-    window.addEventListener("DOMContentLoaded", () => {
+    // Main entry point
+    window.addEventListener("DOMContentLoaded", async () => {
       const params = new URLSearchParams(window.location.search);
       const uid = params.get("uid");
 
       if (!uid) {
-        document.getElementById("error").textContent = "No UID provided in URL.";
+        document.getElementById("error").textContent = "UID not found in URL.";
         return;
       }
 
-      generateQRCode(uid);
+      try {
+        await generateQRCode(uid);
+      } catch (err) {
+        console.error("Failed to generate QR:", err);
+        document.getElementById("error").textContent = "Error generating QR code. Check console.";
+      }
     });
   </script>
 
+  <!-- QRCode.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
   <style>
