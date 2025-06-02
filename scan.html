@@ -1,13 +1,52 @@
-
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>QR Code Scanner</title>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
-    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QR Scanner</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+      background-color: #f4f4f4;
+    }
+    video {
+      width: 100%;
+      max-width: 500px;
+      border: 2px solid #ccc;
+      margin-top: 20px;
+    }
+    #result {
+      margin-top: 20px;
+      font-weight: bold;
+      color: green;
+    }
+    #error {
+      color: red;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
 
+  <h1>Scan Your QR Code</h1>
+  <video id="qr-video"></video>
+  <div id="result">Awaiting scan...</div>
+  <div id="error"></div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <!-- QR Scanner JS -->
+  <script src="qr-scanner.min.js"></script>
+  <script>
+    QrScanner.WORKER_PATH = 'qr-scanner-worker.min.js';
+  </script>
+
+  <script>
+    // Initialize Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -18,75 +57,74 @@
       measurementId: "G-DTP30VXLN7"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
 
-    function generateFingerprint() {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      ctx.textBaseline = 'top';
-      ctx.font = "14px 'Arial'";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillStyle = "#f60";
-      ctx.fillRect(125, 1, 62, 20);
-      ctx.fillStyle = "#069";
-      ctx.fillText("fingerprint", 2, 15);
-      ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-      ctx.fillText("fingerprint", 4, 17);
-
-      const dataUrl = canvas.toDataURL();
-      const hashBuffer = new TextEncoder().encode(dataUrl);
-      return crypto.subtle.digest("SHA-256", hashBuffer).then(hash => {
-        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
-      });
+    // Fingerprint function
+    function getFingerprint() {
+      const fingerprintData = navigator.userAgent + navigator.language + screen.width + screen.height;
+      return btoa(fingerprintData);
     }
 
-    async function verifyToken(scannedHash) {
-      const tokenRef = doc(db, "valid_tokens", scannedHash);
-      const docSnap = await getDoc(tokenRef);
+    function verifyToken(hash) {
+      db.collection("valid_tokens")
+        .where("hash", "==", hash)
+        .limit(1)
+        .get()
+        .then(querySnapshot => {
+          if (querySnapshot.empty) {
+            document.getElementById("result").textContent = "❌ Invalid QR code.";
+            return;
+          }
 
-      if (!docSnap.exists()) {
-        alert("Invalid or unknown QR code.");
-        return;
-      }
+          const tokenDoc = querySnapshot.docs[0];
+          const tokenData = tokenDoc.data();
 
-      const tokenData = docSnap.data();
-      const now = new Date();
-      const expires = new Date(tokenData.expiresAt);
+          // Check expiration
+          const now = new Date();
+          const expiresAt = new Date(tokenData.expiresAt);
+          if (now > expiresAt) {
+            document.getElementById("result").textContent = "❌ Token expired.";
+            return;
+          }
 
-      if (now > expires) {
-        alert("QR code has expired.");
-        return;
-      }
+          // Check fingerprint match
+          const currentFingerprint = getFingerprint();
+          if (currentFingerprint !== tokenData.fingerprint) {
+            document.getElementById("result").textContent = "❌ Fingerprint mismatch.";
+            return;
+          }
 
-      const localFingerprint = await generateFingerprint();
-      if (tokenData.fingerprint !== localFingerprint) {
-        alert("This QR code was not generated on this device.");
-        return;
-      }
-
-      alert("QR code is valid and matches fingerprint!");
+          // If all checks pass
+          document.getElementById("result").textContent = `✅ Access granted to UID: ${tokenData.uid}`;
+        })
+        .catch(error => {
+          console.error("Error verifying token:", error);
+          document.getElementById("error").textContent = "An error occurred while verifying the token.";
+        });
     }
 
-    window.onload = async () => {
-      const videoElem = document.getElementById("preview");
-
-      const qrScanner = new QrScanner(videoElem, async (result) => {
-        qrScanner.stop();
-        await verifyToken(result);
+    // Set up scanner
+    window.onload = () => {
+      const video = document.getElementById('qr-video');
+      const scanner = new QrScanner(video, result => {
+        scanner.stop();
+        try {
+          const parsed = JSON.parse(result);
+          if (parsed.hash) {
+            verifyToken(parsed.hash);
+          } else {
+            document.getElementById("result").textContent = "❌ QR code does not contain a valid hash.";
+          }
+        } catch (e) {
+          document.getElementById("result").textContent = "❌ QR code format is invalid.";
+        }
       });
 
-      await qrScanner.start();
+      scanner.start().catch(err => {
+        document.getElementById("error").textContent = "Camera access denied or not available.";
+      });
     };
   </script>
-  <script src="qr-scanner.umd.min.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; text-align: center; }
-    video { width: 80%; margin-top: 20px; border: 1px solid #ccc; }
-  </style>
-</head>
-<body>
-  <h1>Scan QR Code</h1>
-  <video id="preview"></video>
 </body>
 </html>
