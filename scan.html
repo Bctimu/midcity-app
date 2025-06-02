@@ -1,97 +1,92 @@
+
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <title>QR Code Scanner</title>
-  <style>
-    video, canvas {
-      max-width: 100%;
-      border: 1px solid #ccc;
-      margin-top: 10px;
-    }
-    #status {
-      margin-top: 15px;
-      font-weight: bold;
-      font-size: 1.2em;
-    }
-  </style>
-</head>
-<body>
-  <h2>QR Code Scanner</h2>
-  <video id="video" muted playsinline></video>
-  <div id="status">Waiting for QR code...</div>
-
   <script type="module">
-    import QrScanner from "./qr-scanner.min.js"; // Ensure this file is in the same folder
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
 
-    // Firebase config (same as index.html)
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
       projectId: "admin-17c3d",
-      storageBucket: "admin-17c3d.firebasestorage.app",
+      storageBucket: "admin-17c3d.appspot.com",
       messagingSenderId: "456331474186",
       appId: "1:456331474186:web:0385a740d37862f82af6f3",
       measurementId: "G-DTP30VXLN7"
     };
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    const video = document.getElementById('video');
-    const statusEl = document.getElementById('status');
+    function generateFingerprint() {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      ctx.textBaseline = 'top';
+      ctx.font = "14px 'Arial'";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = "#f60";
+      ctx.fillRect(125, 1, 62, 20);
+      ctx.fillStyle = "#069";
+      ctx.fillText("fingerprint", 2, 15);
+      ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+      ctx.fillText("fingerprint", 4, 17);
 
-    // Hash function (SHA-256)
-    async function hashData(data) {
-      const encoder = new TextEncoder();
-      const buffer = encoder.encode(data);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      const dataUrl = canvas.toDataURL();
+      const hashBuffer = new TextEncoder().encode(dataUrl);
+      return crypto.subtle.digest("SHA-256", hashBuffer).then(hash => {
+        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+      });
     }
 
-    // Check Firestore if token exists and is valid
-    async function checkToken(hash) {
-      const docRef = doc(db, "valid_tokens", hash);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (!data.used) {
-          // Mark token as used
-          await updateDoc(docRef, { used: true, usedAt: new Date().toISOString() });
-          return true; // valid and not used
-        } else {
-          return false; // already used
-        }
+    async function verifyToken(scannedHash) {
+      const tokenRef = doc(db, "valid_tokens", scannedHash);
+      const docSnap = await getDoc(tokenRef);
+
+      if (!docSnap.exists()) {
+        alert("Invalid or unknown QR code.");
+        return;
       }
-      return false; // does not exist
+
+      const tokenData = docSnap.data();
+      const now = new Date();
+      const expires = new Date(tokenData.expiresAt);
+
+      if (now > expires) {
+        alert("QR code has expired.");
+        return;
+      }
+
+      const localFingerprint = await generateFingerprint();
+      if (tokenData.fingerprint !== localFingerprint) {
+        alert("This QR code was not generated on this device.");
+        return;
+      }
+
+      alert("QR code is valid and matches fingerprint!");
     }
 
-    // Setup QrScanner
-    const scanner = new QrScanner(video, async (result) => {
-      statusEl.textContent = "QR Code detected, verifying...";
-      try {
-        const hash = await hashData(result.data);
-        const valid = await checkToken(hash);
-        if (valid) {
-          statusEl.textContent = "✅ Valid QR Code! Access granted.";
-          statusEl.style.color = "green";
-        } else {
-          statusEl.textContent = "❌ Invalid or already used QR Code!";
-          statusEl.style.color = "red";
-        }
-      } catch (error) {
-        statusEl.textContent = "⚠️ Error verifying QR code.";
-        statusEl.style.color = "orange";
-        console.error(error);
-      }
-    });
+    window.onload = async () => {
+      const videoElem = document.getElementById("preview");
 
-    // Start scanning on page load
-    scanner.start();
+      const qrScanner = new QrScanner(videoElem, async (result) => {
+        qrScanner.stop();
+        await verifyToken(result);
+      });
 
+      await qrScanner.start();
+    };
   </script>
+  <script src="qr-scanner.umd.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; }
+    video { width: 80%; margin-top: 20px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <h1>Scan QR Code</h1>
+  <video id="preview"></video>
 </body>
 </html>
