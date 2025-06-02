@@ -14,26 +14,22 @@
     #qrcode {
       margin-top: 20px;
     }
-    button {
-      font-size: 16px;
-      padding: 10px 20px;
-      cursor: pointer;
+    #status {
+      margin-top: 10px;
+      color: green;
     }
   </style>
 </head>
 <body>
-  <h1>Generate Your QR Code</h1>
-  <button id="generate-btn">Generate QR Code</button>
+  <h1>Your QR Code</h1>
   <div id="qrcode"></div>
   <p id="status"></p>
 
-  <!-- Firebase SDKs -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
     import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    // Your Firebase config
+    // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -44,35 +40,38 @@
       measurementId: "G-DTP30VXLN7"
     };
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const generateBtn = document.getElementById('generate-btn');
     const qrcodeContainer = document.getElementById('qrcode');
     const statusText = document.getElementById('status');
 
-    // Clear QR code and status
-    function clearUI() {
-      qrcodeContainer.innerHTML = '';
-      statusText.textContent = '';
+    // Get UID from URL query parameter
+    function getUidFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('uid');
     }
 
-    async function generateQR() {
-      clearUI();
+    // Generate a token with UID + timestamp + random string
+    function generateToken(uid) {
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 10);
+      return `token_${uid}_${timestamp}_${randomStr}`;
+    }
 
-      const user = auth.currentUser;
-      if (!user) {
-        statusText.textContent = "You must be signed in to generate a QR code.";
+    async function generateAndSaveToken() {
+      const uid = getUidFromUrl();
+
+      if (!uid) {
+        statusText.style.color = 'red';
+        statusText.textContent = "No UID provided in URL.";
         return;
       }
 
-      try {
-        const uid = user.uid;
-        const tokenValue = `${uid}_${Date.now()}`;
+      const tokenValue = generateToken(uid);
 
-        // Save token to Firestore
+      try {
+        // Save token document to Firestore
         await setDoc(doc(db, "valid_tokens", tokenValue), {
           uid: uid,
           token: tokenValue,
@@ -80,36 +79,30 @@
           createdAt: serverTimestamp(),
         });
 
-        // Create URL with token param (update domain as needed)
+        // Build QR code URL containing the token param
+        // Replace with your actual scan page URL
         const qrUrl = `https://yourdomain.com/scan.html?token=${encodeURIComponent(tokenValue)}`;
 
-        // Generate QR code
-        QRCode.toCanvas(qrcodeContainer, qrUrl, { width: 250 }, function (error) {
+        // Generate the QR code immediately
+        QRCode.toCanvas(qrcodeContainer, qrUrl, { width: 250 }, (error) => {
           if (error) {
+            statusText.style.color = 'red';
             statusText.textContent = "Error generating QR code.";
             console.error(error);
           } else {
-            statusText.textContent = "QR code generated successfully!";
+            statusText.style.color = 'green';
+            statusText.textContent = "QR code generated!";
           }
         });
-
       } catch (error) {
-        console.error("Error generating QR and saving token:", error);
-        statusText.textContent = "Failed to generate QR code.";
+        statusText.style.color = 'red';
+        statusText.textContent = "Failed to save token.";
+        console.error("Firestore error:", error);
       }
     }
 
-    generateBtn.addEventListener('click', generateQR);
-
-    // Optionally, detect auth state changes and update UI or redirect
-    onAuthStateChanged(auth, user => {
-      if (!user) {
-        statusText.textContent = "Please sign in to generate a QR code.";
-        generateBtn.disabled = true;
-      } else {
-        statusText.textContent = "";
-        generateBtn.disabled = false;
-      }
+    window.addEventListener('load', () => {
+      generateAndSaveToken();
     });
   </script>
 </body>
