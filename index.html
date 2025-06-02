@@ -34,7 +34,7 @@
       const countdownEl = document.getElementById("countdown");
 
       const createdAt = new Date();
-      const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000); // 10 minutes
+      const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 100); // 10 minutes
       const fingerprint = await hashString(uid);
       const rawToken = `${uid}-${createdAt.toISOString()}`;
       const hash = await hashString(rawToken);
