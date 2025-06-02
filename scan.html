@@ -26,11 +26,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-  <!-- QR Scanner UMD -->
-  <script src="https://unpkg.com/qr-scanner/qr-scanner.umd.min.js"></script>
-  <script>
-    QrScanner.WORKER_PATH = 'https://unpkg.com/qr-scanner/qr-scanner-worker.min.js';
-  </script>
+  <!-- QR Scanner -->
+  <script src="qr-scanner.min.js"></script>
 
   <script>
     // Firebase config
@@ -103,6 +100,8 @@
           console.error(error);
           resultElem.textContent = '❌ Error verifying QR code.';
         }
+      }, {
+        returnDetailedScanResult: true
       });
 
       scanner.start();
