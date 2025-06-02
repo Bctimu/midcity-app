@@ -1,52 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>QR Scanner</title>
+  <meta charset="UTF-8">
+  <title>QR Code Scanner</title>
   <style>
-    body {
-      font-family: sans-serif;
-      text-align: center;
-      padding: 20px;
-      background-color: #f4f4f4;
-    }
-    video {
+    #video {
       width: 100%;
-      max-width: 500px;
-      border: 2px solid #ccc;
-      margin-top: 20px;
+      max-width: 400px;
+      margin: 0 auto;
+      display: block;
     }
     #result {
-      margin-top: 20px;
-      font-weight: bold;
-      color: green;
-    }
-    #error {
-      color: red;
       margin-top: 10px;
+      text-align: center;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
+  <h2>Scan QR Code</h2>
+  <video id="video" muted autoplay playsinline></video>
+  <div id="result"></div>
 
-  <h1>Scan Your QR Code</h1>
-  <video id="qr-video"></video>
-  <div id="result">Awaiting scan...</div>
-  <div id="error"></div>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-
-  <!-- QR Scanner JS -->
-  <script src="qr-scanner.min.js"></script>
+  <!-- QR Scanner UMD -->
+  <script src="https://unpkg.com/qr-scanner/qr-scanner.umd.min.js"></script>
   <script>
-    QrScanner.WORKER_PATH = 'qr-scanner-worker.min.js';
+    QrScanner.WORKER_PATH = 'https://unpkg.com/qr-scanner/qr-scanner-worker.min.js';
   </script>
 
   <script>
-    // Initialize Firebase
+    // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -60,70 +47,65 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // Fingerprint function
-    function getFingerprint() {
-      const fingerprintData = navigator.userAgent + navigator.language + screen.width + screen.height;
-      return btoa(fingerprintData);
+    // Fingerprint
+    async function getFingerprint() {
+      const msg = navigator.userAgent + navigator.language + screen.width + screen.height + screen.colorDepth;
+      const enc = new TextEncoder();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(msg));
+      return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    function verifyToken(hash) {
-      db.collection("valid_tokens")
-        .where("hash", "==", hash)
-        .limit(1)
-        .get()
-        .then(querySnapshot => {
-          if (querySnapshot.empty) {
-            document.getElementById("result").textContent = "❌ Invalid QR code.";
-            return;
-          }
-
-          const tokenDoc = querySnapshot.docs[0];
-          const tokenData = tokenDoc.data();
-
-          // Check expiration
-          const now = new Date();
-          const expiresAt = new Date(tokenData.expiresAt);
-          if (now > expiresAt) {
-            document.getElementById("result").textContent = "❌ Token expired.";
-            return;
-          }
-
-          // Check fingerprint match
-          const currentFingerprint = getFingerprint();
-          if (currentFingerprint !== tokenData.fingerprint) {
-            document.getElementById("result").textContent = "❌ Fingerprint mismatch.";
-            return;
-          }
-
-          // If all checks pass
-          document.getElementById("result").textContent = `✅ Access granted to UID: ${tokenData.uid}`;
-        })
-        .catch(error => {
-          console.error("Error verifying token:", error);
-          document.getElementById("error").textContent = "An error occurred while verifying the token.";
-        });
+    // SHA-256 hash
+    async function sha256(text) {
+      const msgBuffer = new TextEncoder().encode(text);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    // Set up scanner
-    window.onload = () => {
-      const video = document.getElementById('qr-video');
-      const scanner = new QrScanner(video, result => {
-        scanner.stop();
+    // Scanner setup
+    window.onload = async () => {
+      const videoElem = document.getElementById('video');
+      const resultElem = document.getElementById('result');
+      const fingerprint = await getFingerprint();
+
+      const scanner = new QrScanner(videoElem, async result => {
+        scanner.stop(); // Stop after first scan
+        resultElem.textContent = 'QR code scanned. Verifying...';
+        const hash = await sha256(result);
+
         try {
-          const parsed = JSON.parse(result);
-          if (parsed.hash) {
-            verifyToken(parsed.hash);
-          } else {
-            document.getElementById("result").textContent = "❌ QR code does not contain a valid hash.";
+          const snapshot = await db.collection('valid_tokens').where('hash', '==', hash).limit(1).get();
+
+          if (snapshot.empty) {
+            resultElem.textContent = '❌ Invalid QR code.';
+            return;
           }
-        } catch (e) {
-          document.getElementById("result").textContent = "❌ QR code format is invalid.";
+
+          const doc = snapshot.docs[0];
+          const data = doc.data();
+
+          const now = new Date();
+          const expiry = new Date(data.expiresAt);
+
+          if (now > expiry) {
+            resultElem.textContent = '⚠️ QR code expired.';
+            return;
+          }
+
+          if (data.fingerprint !== fingerprint) {
+            resultElem.textContent = '🚫 Device mismatch. This QR was not generated for this device.';
+            return;
+          }
+
+          resultElem.textContent = '✅ QR code valid. Welcome!';
+
+        } catch (error) {
+          console.error(error);
+          resultElem.textContent = '❌ Error verifying QR code.';
         }
       });
 
-      scanner.start().catch(err => {
-        document.getElementById("error").textContent = "Camera access denied or not available.";
-      });
+      scanner.start();
     };
   </script>
 </body>
