@@ -2,39 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>QR Code Generator</title>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-      text-align: center;
-    }
-    #qrcode {
-      margin-top: 20px;
-    }
-    #status {
-      margin-top: 10px;
-      color: green;
-    }
-  </style>
-</head>
-<body>
-  <h1>Your QR Code</h1>
-  <div id="qrcode"></div>
-  <p id="status"></p>
-
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
     // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
       projectId: "admin-17c3d",
-      storageBucket: "admin-17c3d.firebasestorage.app",
+      storageBucket: "admin-17c3d.appspot.com",
       messagingSenderId: "456331474186",
       appId: "1:456331474186:web:0385a740d37862f82af6f3",
       measurementId: "G-DTP30VXLN7"
@@ -43,67 +22,80 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    const qrcodeContainer = document.getElementById('qrcode');
-    const statusText = document.getElementById('status');
-
-    // Get UID from URL query parameter
-    function getUidFromUrl() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('uid');
+    // Helper: hash a string using SHA-256
+    async function hashString(str) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(str);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      return [...new Uint8Array(hashBuffer)].map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    // Generate a token with UID + timestamp + random string
-    function generateToken(uid) {
-      const timestamp = Date.now();
-      const randomStr = Math.random().toString(36).substring(2, 10);
-      return `token_${uid}_${timestamp}_${randomStr}`;
-    }
+    async function generateQRCode(uid) {
+      const qrcodeContainer = document.getElementById("qrcode");
 
-    async function generateAndSaveToken() {
-      const uid = getUidFromUrl();
-
-      if (!uid) {
-        statusText.style.color = 'red';
-        statusText.textContent = "No UID provided in URL.";
+      if (!qrcodeContainer) {
+        console.error("QR Code container not found.");
         return;
       }
 
-      const tokenValue = generateToken(uid);
-
       try {
-        // Save token document to Firestore
-        await setDoc(doc(db, "valid_tokens", tokenValue), {
-          uid: uid,
-          token: tokenValue,
-          used: false,
-          createdAt: serverTimestamp(),
+        const timestamp = new Date().toISOString();
+        const rawToken = `${uid}-${timestamp}`;
+        const hashedToken = await hashString(rawToken);
+
+        // Save hashed token in Firestore
+        await setDoc(doc(db, "valid_tokens", uid), {
+          token: hashedToken,
+          createdAt: timestamp
         });
 
-        // Build QR code URL containing the token param
-        // Replace with your actual scan page URL
-        const qrUrl = `https://yourdomain.com/scan.html?token=${encodeURIComponent(tokenValue)}`;
-
-        // Generate the QR code immediately
-        QRCode.toCanvas(qrcodeContainer, qrUrl, { width: 250 }, (error) => {
-          if (error) {
-            statusText.style.color = 'red';
-            statusText.textContent = "Error generating QR code.";
-            console.error(error);
-          } else {
-            statusText.style.color = 'green';
-            statusText.textContent = "QR code generated!";
-          }
+        // Generate the QR code
+        const qrData = `https://yourdomain.com/scan.html?token=${hashedToken}`;
+        new QRCode(qrcodeContainer, {
+          text: qrData,
+          width: 256,
+          height: 256
         });
+
+        console.log("QR Code generated and token saved.");
       } catch (error) {
-        statusText.style.color = 'red';
-        statusText.textContent = "Failed to save token.";
-        console.error("Firestore error:", error);
+        console.error("Error generating QR or saving token:", error);
       }
     }
 
-    window.addEventListener('load', () => {
-      generateAndSaveToken();
+    // Main execution
+    window.addEventListener("DOMContentLoaded", () => {
+      const params = new URLSearchParams(window.location.search);
+      const uid = params.get("uid");
+
+      if (!uid) {
+        document.getElementById("error").textContent = "No UID provided in URL.";
+        return;
+      }
+
+      generateQRCode(uid);
     });
   </script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 40px;
+    }
+    #qrcode {
+      margin-top: 20px;
+    }
+    #error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <h1>Your QR Code</h1>
+  <div id="qrcode"></div>
+  <p id="error"></p>
 </body>
 </html>
