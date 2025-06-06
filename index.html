@@ -66,7 +66,7 @@
 
       try {
         // Save token data to Firestore
-        await firestore.collection('tokens').doc(token).set(tokenData);
+        await firestore.collection('valid_tokens').doc(token).set(tokenData);
 
         // Generate QR code with token string
         QRCode.toCanvas(token, { width: 250 }, (error, canvas) => {
