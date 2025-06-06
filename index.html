@@ -2,14 +2,31 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>QR Code Generator</title>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
-    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js";
 
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+  <!-- QRCode.js -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+
+  <style>
+    body { font-family: Arial, sans-serif; padding: 2rem; }
+    #qrcode { margin-top: 20px; }
+    button { font-size: 1rem; padding: 0.5rem 1rem; }
+    #message { margin-top: 10px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Generate Resident QR Code</h1>
+  <button id="generateBtn">Generate QR Code</button>
+  <div id="qrcode"></div>
+  <div id="message"></div>
+
+  <script>
+    // Your Firebase config here
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -20,62 +37,60 @@
       measurementId: "G-DTP30VXLN7"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const firestore = firebase.firestore();
 
-    const uid = new URLSearchParams(window.location.search).get("uid");
-    if (!uid) {
-      alert("Missing UID in URL");
-      throw new Error("Missing UID");
-    }
+    const generateBtn = document.getElementById('generateBtn');
+    const qrcodeDiv = document.getElementById('qrcode');
+    const messageDiv = document.getElementById('message');
 
-    function hashString(str) {
-      const buffer = new TextEncoder().encode(str);
-      return crypto.subtle.digest("SHA-256", buffer).then(hash => {
-        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
-      });
-    }
+    generateBtn.addEventListener('click', async () => {
+      // Clear previous QR and message
+      qrcodeDiv.innerHTML = '';
+      messageDiv.textContent = '';
 
-    const now = Date.now();
-    const createdAt = new Date(now).toISOString();
-    const expiresAt = new Date(now + 60000).toISOString();
+      // Generate a random token (e.g. UUID v4)
+      const token = generateToken();
 
-    const fpPromise = FingerprintJS.load();
+      // Create token data with 1-minute expiry
+      const createdAt = new Date();
+      const expiresAt = new Date(createdAt.getTime() + 1 * 60 * 1000); // 1 min later
 
-    fpPromise.then(fp => fp.get()).then(async result => {
-      const fingerprint = result.visitorId;
-      const rawData = `${uid}_${fingerprint}_${createdAt}`;
-      const hash = await hashString(rawData);
+      const tokenData = {
+        token,
+        createdAt: firebase.firestore.Timestamp.fromDate(createdAt),
+        expiresAt: firebase.firestore.Timestamp.fromDate(expiresAt),
+        // fingerprint field removed
+      };
 
-      const docRef = doc(db, "valid_tokens", hash);
-      await setDoc(docRef, {
-        uid,
-        fingerprint,
-        createdAt,
-        expiresAt
-      });
+      try {
+        // Save token data to Firestore
+        await firestore.collection('tokens').doc(token).set(tokenData);
 
-      const qrURL = `${window.location.origin}/scan.html?token=${hash}`;
-      QRCode.toCanvas(document.getElementById("qrcode"), qrURL, error => {
-        if (error) console.error(error);
-      });
-
-      const countdown = document.getElementById("countdown");
-      let secondsLeft = 60;
-      countdown.textContent = `Token expires in: ${secondsLeft}s`;
-      setInterval(() => {
-        secondsLeft--;
-        countdown.textContent = `Token expires in: ${secondsLeft}s`;
-        if (secondsLeft <= 0) {
-          countdown.textContent = "Token expired.";
-        }
-      }, 1000);
+        // Generate QR code with token string
+        QRCode.toCanvas(token, { width: 250 }, (error, canvas) => {
+          if (error) {
+            messageDiv.textContent = 'Error generating QR code.';
+            console.error(error);
+            return;
+          }
+          qrcodeDiv.appendChild(canvas);
+          messageDiv.textContent = 'QR Code generated! It will expire in 1 minute.';
+        });
+      } catch (err) {
+        messageDiv.textContent = 'Error saving token to database.';
+        console.error(err);
+      }
     });
+
+    // Simple random token generator (UUID v4 style)
+    function generateToken() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
   </script>
-</head>
-<body>
-  <h1>QR Code Generator</h1>
-  <canvas id="qrcode"></canvas>
-  <p id="countdown"></p>
 </body>
 </html>
