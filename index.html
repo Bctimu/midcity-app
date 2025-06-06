@@ -66,7 +66,7 @@
           timestamp: serverTimestamp()
         };
 
-        await addDoc(collection(db, "residentTokens"), docData);
+        await addDoc(collection(db, "valid_tokens"), docData);
 
         const qrURL = `https://yourdomain.com/scan.html?token=${hash}`;
         new QRCode(qrcodeContainer, {
