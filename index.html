@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>QR Code Generator with Timer</title>
+  <title>Generated Qr Code</title>
 
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -21,7 +21,7 @@
   </style>
 </head>
 <body>
-  <h1>Generate Resident QR Code</h1>
+  <h1>Generated QR Code</h1>
   <button id="generateBtn">Generate QR Code</button>
   <div id="qrcode"></div>
   <div id="timer"></div>
@@ -88,7 +88,6 @@
             return;
           }
           qrcodeDiv.appendChild(canvas);
-          messageDiv.textContent = 'QR Code generated! Expires in 1:00.';
           startCountdown(60); // 60 seconds countdown
         });
       } catch (err) {
