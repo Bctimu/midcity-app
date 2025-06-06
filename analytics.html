@@ -2,74 +2,77 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Analytics</title>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
-  <h1>Analytics Dashboard</h1>
-  <div id="analytics"></div>
+  <h1>Analytics</h1>
+  <div id="data"></div>
 
   <script>
     // Firebase config (replace with your own)
     const firebaseConfig = {
-      apiKey: "...",
-      authDomain: "...",
-      projectId: "...",
-      storageBucket: "...",
-      messagingSenderId: "...",
-      appId: "..."
+      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
+      authDomain: "admin-17c3d.firebaseapp.com",
+      projectId: "admin-17c3d",
+      storageBucket: "admin-17c3d.appspot.com",
+      messagingSenderId: "456331474186",
+      appId: "1:456331474186:web:0385a740d37862f82af6f3",
+      measurementId: "G-DTP30VXLN7"
     };
 
     // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // Helper: get uid from URL query string ?uid=...
+    // Helper: get URL param uid
     function getUidFromUrl() {
       const params = new URLSearchParams(window.location.search);
-      return params.get('uid');
+      return params.get('uid') || '';
     }
 
-    const uid = getUidFromUrl();
+    async function loadData() {
+      const uid = getUidFromUrl();
+      const dataDiv = document.getElementById('data');
 
-    if (!uid) {
-      document.getElementById('analytics').innerText = "No UID provided in URL.";
-      throw new Error("UID missing in URL");
-    }
+      let query;
 
-    // Query valid_tokens based on uid
-    let tokensQuery;
+      if (uid === 'midcity') {
+        // midcity can see all tokens
+        query = db.collection('valid_tokens');
+      } else if (uid) {
+        // other users see only their own tokens
+        query = db.collection('valid_tokens').where('userId', '==', uid);
+      } else {
+        dataDiv.innerText = 'No UID provided in URL.';
+        return;
+      }
 
-    if (uid === "midcity") {
-      // midcity user sees all data
-      tokensQuery = db.collection('valid_tokens');
-    } else {
-      // others see only their tokens
-      tokensQuery = db.collection('valid_tokens').where('userId', '==', uid);
-    }
+      try {
+        const snapshot = await query.get();
 
-    tokensQuery.get()
-      .then(snapshot => {
-        const container = document.getElementById('analytics');
         if (snapshot.empty) {
-          container.innerText = "No analytics data available.";
+          dataDiv.innerText = 'No tokens found for this user.';
           return;
         }
 
         let html = '<ul>';
         snapshot.forEach(doc => {
-          const data = doc.data();
-          html += `<li>Token ID: ${doc.id} — User: ${data.userId} — Created: ${new Date(data.createdAt?.seconds * 1000).toLocaleString()}</li>`;
+          const token = doc.data();
+          html += `<li><strong>Token ID:</strong> ${doc.id} - <strong>UserID:</strong> ${token.userId} - <strong>Expires:</strong> ${token.expiresAt?.toDate()}</li>`;
         });
         html += '</ul>';
-        container.innerHTML = html;
-      })
-      .catch(error => {
-        console.error("Error loading analytics:", error);
-        document.getElementById('analytics').innerText = "Error loading analytics data.";
-      });
+
+        dataDiv.innerHTML = html;
+
+      } catch (error) {
+        dataDiv.innerText = 'Error loading data: ' + error.message;
+      }
+    }
+
+    loadData();
   </script>
 </body>
 </html>
