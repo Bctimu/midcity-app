@@ -1,114 +1,75 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>QR Code Analytics</title>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import {
-      getFirestore,
-      collection,
-      onSnapshot,
-      query,
-      where
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
-      authDomain: "admin-17c3d.firebaseapp.com",
-      projectId: "admin-17c3d",
-      storageBucket: "admin-17c3d.appspot.com",
-      messagingSenderId: "456331474186",
-      appId: "1:456331474186:web:0385a740d37862f82af6f3",
-      measurementId: "G-DTP30VXLN7"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    const updateDashboard = (qrDocs) => {
-      const qrPerDay = {};
-      const qrPerUser = {};
-      const recentQRCodes = [];
-
-      qrDocs.forEach(doc => {
-        const data = doc.data();
-
-        const createdAt = data.createdAt?.toDate?.();
-        if (createdAt && !isNaN(createdAt.getTime())) {
-          const dateStr = createdAt.toISOString().split("T")[0];
-          qrPerDay[dateStr] = (qrPerDay[dateStr] || 0) + 1;
-        }
-
-        const userId = data.userId || "Unknown";
-        qrPerUser[userId] = (qrPerUser[userId] || 0) + 1;
-
-        recentQRCodes.push({
-          token: data.token,
-          createdAt: createdAt ? createdAt.toLocaleString() : "Invalid Date",
-          userId: userId
-        });
-      });
-
-      document.getElementById("qr-count").textContent = qrDocs.length;
-      document.getElementById("qr-users").textContent = Object.keys(qrPerUser).length;
-
-      const recentList = document.getElementById("recent-qr-list");
-      recentList.innerHTML = "";
-      recentQRCodes.slice(-10).reverse().forEach(qr => {
-        const li = document.createElement("li");
-        li.textContent = `Token: ${qr.token}, User: ${qr.userId}, Created: ${qr.createdAt}`;
-        recentList.appendChild(li);
-      });
-
-      const perDayList = document.getElementById("qr-per-day");
-      perDayList.innerHTML = "";
-      Object.keys(qrPerDay).sort().forEach(date => {
-        const li = document.createElement("li");
-        li.textContent = `${date}: ${qrPerDay[date]} QR codes`;
-        perDayList.appendChild(li);
-      });
-    };
-
-    const q = query(collection(db, "qrCodes"));
-
-    onSnapshot(q, (snapshot) => {
-      updateDashboard(snapshot.docs);
-    });
-  </script>
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 2rem;
-    }
-    h1 {
-      font-size: 2rem;
-      margin-bottom: 1rem;
-    }
-    .section {
-      margin-bottom: 2rem;
-    }
-    ul {
-      list-style: none;
-      padding-left: 0;
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Analytics</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
-  <h1>QR Code Analytics</h1>
+  <h1>Analytics Dashboard</h1>
+  <div id="analytics"></div>
 
-  <div class="section">
-    <p><strong>Total QR Codes:</strong> <span id="qr-count">0</span></p>
-    <p><strong>Unique Users:</strong> <span id="qr-users">0</span></p>
-  </div>
+  <script>
+    // Firebase config (replace with your own)
+    const firebaseConfig = {
+      apiKey: "...",
+      authDomain: "...",
+      projectId: "...",
+      storageBucket: "...",
+      messagingSenderId: "...",
+      appId: "..."
+    };
 
-  <div class="section">
-    <h2>QR Codes Per Day</h2>
-    <ul id="qr-per-day"></ul>
-  </div>
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
 
-  <div class="section">
-    <h2>Recent QR Codes</h2>
-    <ul id="recent-qr-list"></ul>
-  </div>
+    // Helper: get uid from URL query string ?uid=...
+    function getUidFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('uid');
+    }
+
+    const uid = getUidFromUrl();
+
+    if (!uid) {
+      document.getElementById('analytics').innerText = "No UID provided in URL.";
+      throw new Error("UID missing in URL");
+    }
+
+    // Query valid_tokens based on uid
+    let tokensQuery;
+
+    if (uid === "midcity") {
+      // midcity user sees all data
+      tokensQuery = db.collection('valid_tokens');
+    } else {
+      // others see only their tokens
+      tokensQuery = db.collection('valid_tokens').where('userId', '==', uid);
+    }
+
+    tokensQuery.get()
+      .then(snapshot => {
+        const container = document.getElementById('analytics');
+        if (snapshot.empty) {
+          container.innerText = "No analytics data available.";
+          return;
+        }
+
+        let html = '<ul>';
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          html += `<li>Token ID: ${doc.id} — User: ${data.userId} — Created: ${new Date(data.createdAt?.seconds * 1000).toLocaleString()}</li>`;
+        });
+        html += '</ul>';
+        container.innerHTML = html;
+      })
+      .catch(error => {
+        console.error("Error loading analytics:", error);
+        document.getElementById('analytics').innerText = "Error loading analytics data.";
+      });
+  </script>
 </body>
 </html>
