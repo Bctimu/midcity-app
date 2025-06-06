@@ -1,64 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>QR Code Analytics</title>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js" type="module"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js" type="module"></script>
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 40px;
-      max-width: 1000px;
-      margin: auto;
-    }
-    h1 {
-      text-align: center;
-    }
-    .metrics {
-      display: flex;
-      justify-content: space-around;
-      margin: 30px 0;
-    }
-    .metric-box {
-      background: #f5f5f5;
-      padding: 20px;
-      border-radius: 10px;
-      width: 30%;
-      text-align: center;
-    }
-    canvas {
-      margin-top: 40px;
-    }
-  </style>
-</head>
-<body>
-  <h1>QR Code System Analytics</h1>
-
-  <div class="metrics">
-    <div class="metric-box">
-      <h2 id="totalGenerated">0</h2>
-      <p>Total QR Codes Generated</p>
-    </div>
-    <div class="metric-box">
-      <h2 id="totalScanned">0</h2>
-      <p>Total Successful Scans</p>
-    </div>
-    <div class="metric-box">
-      <h2 id="totalExpired">0</h2>
-      <p>Total Expired Without Scanning</p>
-    </div>
-  </div>
-
-  <canvas id="dailyChart" height="120"></canvas>
-
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      onSnapshot,
+      query,
+      where
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
@@ -73,70 +25,90 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    const tokenCol = collection(db, "valid_tokens");
+    const updateDashboard = (qrDocs) => {
+      const qrPerDay = {};
+      const qrPerUser = {};
+      const recentQRCodes = [];
 
-    let chartInstance;
-
-    function updateDashboard(docs) {
-      let totalGenerated = 0;
-      let totalScanned = 0;
-      let totalExpired = 0;
-      const dayMap = {};
-      const now = new Date();
-
-      docs.forEach(doc => {
+      qrDocs.forEach(doc => {
         const data = doc.data();
-        totalGenerated++;
 
-        const createdAt = new Date(data.createdAt);
-        const expiresAt = new Date(data.expiresAt);
-
-        const dateKey = createdAt.toISOString().split("T")[0];
-        dayMap[dateKey] = (dayMap[dateKey] || 0) + 1;
-
-        if (data.scannedAt) {
-          totalScanned++;
-        } else if (expiresAt < now) {
-          totalExpired++;
+        const createdAt = data.createdAt?.toDate?.();
+        if (createdAt && !isNaN(createdAt.getTime())) {
+          const dateStr = createdAt.toISOString().split("T")[0];
+          qrPerDay[dateStr] = (qrPerDay[dateStr] || 0) + 1;
         }
+
+        const userId = data.userId || "Unknown";
+        qrPerUser[userId] = (qrPerUser[userId] || 0) + 1;
+
+        recentQRCodes.push({
+          token: data.token,
+          createdAt: createdAt ? createdAt.toLocaleString() : "Invalid Date",
+          userId: userId
+        });
       });
 
-      document.getElementById("totalGenerated").textContent = totalGenerated;
-      document.getElementById("totalScanned").textContent = totalScanned;
-      document.getElementById("totalExpired").textContent = totalExpired;
+      document.getElementById("qr-count").textContent = qrDocs.length;
+      document.getElementById("qr-users").textContent = Object.keys(qrPerUser).length;
 
-      const labels = Object.keys(dayMap).sort();
-      const dataPoints = labels.map(date => dayMap[date]);
-
-      const ctx = document.getElementById("dailyChart").getContext("2d");
-
-      if (chartInstance) chartInstance.destroy();
-      chartInstance = new Chart(ctx, {
-        type: "bar",
-        data: {
-          labels,
-          datasets: [{
-            label: "QR Codes Generated",
-            data: dataPoints,
-            backgroundColor: "#36A2EB"
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: false },
-            title: {
-              display: true,
-              text: "QR Code Generation by Day"
-            }
-          }
-        }
+      const recentList = document.getElementById("recent-qr-list");
+      recentList.innerHTML = "";
+      recentQRCodes.slice(-10).reverse().forEach(qr => {
+        const li = document.createElement("li");
+        li.textContent = `Token: ${qr.token}, User: ${qr.userId}, Created: ${qr.createdAt}`;
+        recentList.appendChild(li);
       });
-    }
 
-    onSnapshot(tokenCol, (snapshot) => {
+      const perDayList = document.getElementById("qr-per-day");
+      perDayList.innerHTML = "";
+      Object.keys(qrPerDay).sort().forEach(date => {
+        const li = document.createElement("li");
+        li.textContent = `${date}: ${qrPerDay[date]} QR codes`;
+        perDayList.appendChild(li);
+      });
+    };
+
+    const q = query(collection(db, "qrCodes"));
+
+    onSnapshot(q, (snapshot) => {
       updateDashboard(snapshot.docs);
     });
   </script>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 2rem;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+    }
+    .section {
+      margin-bottom: 2rem;
+    }
+    ul {
+      list-style: none;
+      padding-left: 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>QR Code Analytics</h1>
+
+  <div class="section">
+    <p><strong>Total QR Codes:</strong> <span id="qr-count">0</span></p>
+    <p><strong>Unique Users:</strong> <span id="qr-users">0</span></p>
+  </div>
+
+  <div class="section">
+    <h2>QR Codes Per Day</h2>
+    <ul id="qr-per-day"></ul>
+  </div>
+
+  <div class="section">
+    <h2>Recent QR Codes</h2>
+    <ul id="recent-qr-list"></ul>
+  </div>
 </body>
 </html>
