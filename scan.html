@@ -1,22 +1,30 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>QR Scanner</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QR Code Scanner</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+  <!-- html5-qrcode -->
   <script src="https://unpkg.com/html5-qrcode"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
+
   <style>
-    #result { font-size: 1.5rem; margin-top: 20px; }
+    body { font-family: Arial, sans-serif; padding: 2rem; }
+    #reader { width: 300px; margin: auto; }
+    #result { margin-top: 20px; font-weight: bold; font-size: 1.2rem; }
   </style>
 </head>
 <body>
-  <h1>Scan Resident QR</h1>
-  <div id="reader" style="width: 300px;"></div>
+  <h1>Scan Resident QR Code</h1>
+  <div id="reader"></div>
   <div id="result"></div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
-    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js";
-
+  <script>
+    // Your Firebase config here
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -27,63 +35,62 @@
       measurementId: "G-DTP30VXLN7"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const firestore = firebase.firestore();
 
-    const resultBox = document.getElementById("result");
-    const fpPromise = FingerprintJS.load();
+    const resultDiv = document.getElementById('result');
 
-    const html5QrCode = new Html5Qrcode("reader");
+    function onScanSuccess(decodedText, decodedResult) {
+      // Stop scanning after first successful scan
+      html5QrcodeScanner.clear().catch(error => {
+        console.error('Failed to clear scanner', error);
+      });
+
+      resultDiv.textContent = 'Verifying QR code...';
+
+      verifyToken(decodedText);
+    }
+
+    async function verifyToken(token) {
+      try {
+        const docRef = firestore.collection('tokens').doc(token);
+        const doc = await docRef.get();
+
+        if (!doc.exists) {
+          resultDiv.textContent = 'Invalid QR Code: Token not found.';
+          return;
+        }
+
+        const tokenData = doc.data();
+        const now = new Date();
+
+        // Check expiry
+        if (tokenData.expiresAt.toDate() < now) {
+          resultDiv.textContent = 'QR Code expired.';
+          return;
+        }
+
+        // Token valid
+        resultDiv.textContent = 'QR Code is valid! Access granted.';
+      } catch (error) {
+        console.error('Error verifying token:', error);
+        resultDiv.textContent = 'Error verifying QR code.';
+      }
+    }
+
+    // Initialize html5-qrcode scanner
+    const html5QrcodeScanner = new Html5Qrcode("reader");
     const config = { fps: 10, qrbox: 250 };
 
-    html5QrCode.start(
+    html5QrcodeScanner.start(
       { facingMode: "environment" },
       config,
-      async (decodedText, decodedResult) => {
-        html5QrCode.stop();
-        try {
-          const url = new URL(decodedText);
-          const token = url.searchParams.get("token");
-
-          if (!token) {
-            resultBox.textContent = "❌ Invalid QR code format.";
-            return;
-          }
-
-          const docRef = doc(db, "valid_tokens", token);
-          const docSnap = await getDoc(docRef);
-
-          if (!docSnap.exists()) {
-            resultBox.textContent = "❌ Token not found.";
-            return;
-          }
-
-          const data = docSnap.data();
-          const now = new Date();
-          const expiresAt = new Date(data.expiresAt);
-          if (now > expiresAt) {
-            resultBox.textContent = "⏰ Token expired.";
-            return;
-          }
-
-          const fp = await fpPromise;
-          const currentFingerprint = (await fp.get()).visitorId;
-
-          if (currentFingerprint !== data.fingerprint) {
-            resultBox.textContent = "🚫 Fingerprint does not match.";
-            return;
-          }
-
-          resultBox.textContent = "✅ Verified Resident!";
-        } catch (err) {
-          console.error(err);
-          resultBox.textContent = "❌ Error during verification.";
-        }
-      },
-      error => {
-        // Optional scan error handling
-      }
-    );
+      onScanSuccess
+    ).catch(err => {
+      console.error('Unable to start scanning:', err);
+      resultDiv.textContent = 'Error initializing QR scanner.';
+    });
   </script>
 </body>
 </html>
