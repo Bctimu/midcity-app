@@ -1,18 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Analytics</title>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-</head>
-<body>
-  <h1>Analytics</h1>
-  <div id="data"></div>
+  <title>QR Analytics</title>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      query,
+      onSnapshot,
+      where
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-  <script>
-    // Firebase config (replace with your own)
+    const uid = new URLSearchParams(window.location.search).get("uid");
+
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -23,56 +24,37 @@
       measurementId: "G-DTP30VXLN7"
     };
 
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-    // Helper: get URL param uid
-    function getUidFromUrl() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('uid') || '';
-    }
+    const q = uid === "midcity"
+      ? query(collection(db, "qrScans"))
+      : query(collection(db, "qrScans"), where("scannedBy", "==", uid));
 
-    async function loadData() {
-      const uid = getUidFromUrl();
-      const dataDiv = document.getElementById('data');
+    onSnapshot(q, (snapshot) => {
+      const scans = snapshot.docs.map(doc => doc.data());
 
-      let query;
+      document.getElementById("scan-count").textContent = scans.length;
 
-      if (uid === 'midcity') {
-        // midcity can see all tokens
-        query = db.collection('valid_tokens');
-      } else if (uid) {
-        // other users see only their own tokens
-        query = db.collection('valid_tokens').where('userId', '==', uid);
-      } else {
-        dataDiv.innerText = 'No UID provided in URL.';
-        return;
-      }
-
-      try {
-        const snapshot = await query.get();
-
-        if (snapshot.empty) {
-          dataDiv.innerText = 'No tokens found for this user.';
-          return;
-        }
-
-        let html = '<ul>';
-        snapshot.forEach(doc => {
-          const token = doc.data();
-          html += `<li><strong>Token ID:</strong> ${doc.id} - <strong>UserID:</strong> ${token.userId} - <strong>Expires:</strong> ${token.expiresAt?.toDate()}</li>`;
-        });
-        html += '</ul>';
-
-        dataDiv.innerHTML = html;
-
-      } catch (error) {
-        dataDiv.innerText = 'Error loading data: ' + error.message;
-      }
-    }
-
-    loadData();
+      const list = document.getElementById("scan-list");
+      list.innerHTML = "";
+      scans.slice(-20).reverse().forEach(scan => {
+        const li = document.createElement("li");
+        li.textContent = `Token: ${scan.token}, User: ${scan.originalUserId}, Scanned: ${scan.scannedAt.toDate().toLocaleString()}`;
+        list.appendChild(li);
+      });
+    });
   </script>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    h1 { font-size: 1.5rem; }
+    ul { padding-left: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>QR Analytics</h1>
+  <p>Total Scans: <span id="scan-count">0</span></p>
+  <h2>Recent Scans</h2>
+  <ul id="scan-list"></ul>
 </body>
 </html>
