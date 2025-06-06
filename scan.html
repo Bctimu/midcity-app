@@ -1,29 +1,24 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>QR Code Scanner</title>
-
-  <!-- Firebase SDK -->
+  <title>QR Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-
-  <!-- html5-qrcode -->
-  <script src="https://unpkg.com/html5-qrcode"></script>
-
   <style>
-    body { font-family: Arial, sans-serif; padding: 2rem; text-align: center; }
+    body { font-family: Arial, sans-serif; padding: 20px; }
     #reader { width: 300px; margin: auto; }
-    #result { font-size: 1.2rem; margin-top: 1rem; font-weight: bold; }
+    #result { margin-top: 20px; font-size: 1.2rem; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>Scan Resident QR Code</h1>
+  <h1>Business QR Scanner</h1>
   <div id="reader"></div>
-  <div id="result"></div>
+  <div id="result">Waiting for scan...</div>
 
   <script>
+    const uid = new URLSearchParams(window.location.search).get("uid");
+
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -34,76 +29,53 @@
       measurementId: "G-DTP30VXLN7"
     };
 
-    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
-    const firestore = firebase.firestore();
+    const db = firebase.firestore();
 
-    const resultDiv = document.getElementById('result');
+    const reader = new Html5Qrcode("reader");
 
-    // Get uid from URL (if you want to use it for anything)
-    function getUidFromUrl() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('uid') || "UnknownUser";
-    }
-    const uid = getUidFromUrl();
+    function onScanSuccess(decodedText) {
+      document.getElementById("result").textContent = "Checking QR code...";
+      reader.pause();
 
-    function verifyToken(token) {
-      const docRef = firestore.collection('valid_tokens').doc(token);
-      docRef.get()
-        .then(doc => {
-          if (!doc.exists) {
-            resultDiv.textContent = 'Invalid QR Code: Token not found.';
-            return;
-          }
+      db.collection("valid_tokens").doc(decodedText).get().then(doc => {
+        if (!doc.exists) {
+          document.getElementById("result").textContent = "Invalid token.";
+          reader.resume();
+          return;
+        }
 
-          const tokenData = doc.data();
-          const now = new Date();
+        const data = doc.data();
+        const now = new Date();
 
-          if (tokenData.expiresAt.toDate() < now) {
-            resultDiv.textContent = 'QR Code expired.';
-            return;
-          }
+        if (data.expiresAt.toDate() < now) {
+          document.getElementById("result").textContent = "Token expired.";
+          reader.resume();
+          return;
+        }
 
-          // Optionally check if uid matches (if you want)
-          // if(tokenData.userId !== uid) {
-          //   resultDiv.textContent = 'User ID mismatch.';
-          //   return;
-          // }
-
-          resultDiv.textContent = `QR Code verified! User: ${tokenData.userId}`;
-        })
-        .catch(error => {
-          resultDiv.textContent = 'Error verifying QR Code.';
-          console.error(error);
+        db.collection("qrScans").add({
+          token: decodedText,
+          scannedAt: firebase.firestore.Timestamp.now(),
+          scannedBy: uid,
+          originalUserId: data.userId,
+          createdAt: data.createdAt,
+        }).then(() => {
+          document.getElementById("result").textContent = "Scan logged!";
+          setTimeout(() => reader.resume(), 1500);
+        }).catch(err => {
+          document.getElementById("result").textContent = "Error logging scan.";
+          console.error(err);
+          reader.resume();
         });
-    }
-
-    function onScanSuccess(decodedText, decodedResult) {
-      // Stop scanning to avoid multiple detections
-      html5QrcodeScanner.clear().then(() => {
-        verifyToken(decodedText);
-      }).catch(err => {
-        console.error('Failed to clear scanner:', err);
       });
     }
 
-    function onScanFailure(error) {
-      // can be ignored or logged
-      // console.warn(`QR scan error: ${error}`);
-    }
-
-    const html5QrcodeScanner = new Html5Qrcode("reader");
-    const config = { fps: 10, qrbox: 250 };
-
-    html5QrcodeScanner.start(
-      { facingMode: "environment" },
-      config,
-      onScanSuccess,
-      onScanFailure
-    ).catch(err => {
-      console.error('Unable to start scanning:', err);
-      resultDiv.textContent = 'Unable to start scanner.';
-    });
+    Html5Qrcode.getCameras().then(cameras => {
+      if (cameras.length) {
+        reader.start(cameras[0].id, { fps: 10, qrbox: 250 }, onScanSuccess);
+      }
+    }).catch(err => console.error(err));
   </script>
 </body>
 </html>
