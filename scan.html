@@ -1,37 +1,22 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>QR Code Scanner</title>
+  <title>QR Scanner</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
-  <script src="https://openfpcdn.io/fingerprintjs/v3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 600px;
-      margin: 20px auto;
-      text-align: center;
-    }
-    #reader {
-      width: 100%;
-      max-width: 400px;
-      margin: auto;
-      padding-top: 20px;
-    }
-    #result {
-      font-size: 1.2rem;
-      margin-top: 20px;
-    }
+    #result { font-size: 1.5rem; margin-top: 20px; }
   </style>
 </head>
 <body>
   <h1>Scan Resident QR</h1>
-  <div id="reader"></div>
+  <div id="reader" style="width: 300px;"></div>
   <div id="result"></div>
 
-  <script>
-    // Firebase config - REPLACE with your own
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
+    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js";
+
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -42,104 +27,63 @@
       measurementId: "G-DTP30VXLN7"
     };
 
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-    // FingerprintJS - get visitorId
-    async function getDeviceFingerprint() {
-      const fp = await FingerprintJS.load();
-      const result = await fp.get();
-      return result.visitorId;
-    }
+    const resultBox = document.getElementById("result");
+    const fpPromise = FingerprintJS.load();
 
-    function isValidTokenStructure(data) {
-      return (
-        typeof data.uid === "string" &&
-        typeof data.hash === "string" &&
-        typeof data.fingerprint === "string" &&
-        typeof data.createdAt === "string" &&
-        typeof data.expiresAt === "string"
-      );
-    }
+    const html5QrCode = new Html5Qrcode("reader");
+    const config = { fps: 10, qrbox: 250 };
 
-    const scanner = new Html5Qrcode("reader");
-    let scanning = false;
+    html5QrCode.start(
+      { facingMode: "environment" },
+      config,
+      async (decodedText, decodedResult) => {
+        html5QrCode.stop();
+        try {
+          const url = new URL(decodedText);
+          const token = url.searchParams.get("token");
 
-    async function startScanner() {
-      if (scanning) return;
-      scanning = true;
-
-      try {
-        await scanner.start(
-          { facingMode: "environment" },
-          {
-            fps: 10,
-            qrbox: { width: 250, height: 250 }
-          },
-          async (decodedText, decodedResult) => {
-            await scanner.stop();
-            scanning = false;
-            document.getElementById("result").innerText = "Verifying...";
-
-            try {
-              const parsed = JSON.parse(decodedText);
-
-              const docRef = db.collection("valid_tokens").doc(parsed.hash);
-              const docSnap = await docRef.get();
-
-              if (!docSnap.exists) {
-                return showResult("❌ Invalid or unknown QR code");
-              }
-
-              const data = docSnap.data();
-
-              if (!isValidTokenStructure(data)) {
-                return showResult("❌ Malformed token data.");
-              }
-
-              const currentFingerprint = await getDeviceFingerprint();
-              if (currentFingerprint !== data.fingerprint) {
-                return showResult("❌ This QR was not generated for this device.");
-              }
-
-              const now = new Date();
-              const expires = new Date(data.expiresAt);
-              if (now > expires) {
-                return showResult("❌ QR code has expired.");
-              }
-
-              showResult("✅ QR code is valid!");
-            } catch (error) {
-              console.error(error);
-              showResult("❌ Error verifying QR code.");
-            }
-          },
-          (errorMessage) => {
-            // Optional scan error handling
+          if (!token) {
+            resultBox.textContent = "❌ Invalid QR code format.";
+            return;
           }
-        );
-      } catch (err) {
-        console.error("Scanner start failed:", err);
-        document.getElementById("result").innerText = "⚠️ Scanner failed to start.";
+
+          const docRef = doc(db, "valid_tokens", token);
+          const docSnap = await getDoc(docRef);
+
+          if (!docSnap.exists()) {
+            resultBox.textContent = "❌ Token not found.";
+            return;
+          }
+
+          const data = docSnap.data();
+          const now = new Date();
+          const expiresAt = new Date(data.expiresAt);
+          if (now > expiresAt) {
+            resultBox.textContent = "⏰ Token expired.";
+            return;
+          }
+
+          const fp = await fpPromise;
+          const currentFingerprint = (await fp.get()).visitorId;
+
+          if (currentFingerprint !== data.fingerprint) {
+            resultBox.textContent = "🚫 Fingerprint does not match.";
+            return;
+          }
+
+          resultBox.textContent = "✅ Verified Resident!";
+        } catch (err) {
+          console.error(err);
+          resultBox.textContent = "❌ Error during verification.";
+        }
+      },
+      error => {
+        // Optional scan error handling
       }
-    }
-
-    function showResult(message) {
-      const resultDiv = document.getElementById("result");
-      resultDiv.innerText = message;
-
-      if (!message.startsWith("✅")) {
-        setTimeout(() => {
-          resultDiv.innerText = "";
-          startScanner();
-        }, 5000);
-      }
-    }
-
-    window.onload = () => {
-      startScanner();
-    };
+    );
   </script>
 </body>
 </html>
