@@ -27,6 +27,12 @@
       font-size: 1.2rem;
       margin-top: 20px;
     }
+    #timer {
+      font-size: 1.5rem;
+      margin-top: 15px;
+      color: #d9534f;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -34,6 +40,7 @@
   <button id="generateBtn">Generate QR Code Token (Expires in 1 Minute)</button>
   <canvas id="qr-code"></canvas>
   <div id="generateResult"></div>
+  <div id="timer"></div>
 
   <script>
     // Firebase config - REPLACE with your own
@@ -56,6 +63,29 @@
       const fp = await FingerprintJS.load();
       const result = await fp.get();
       return result.visitorId;
+    }
+
+    // Timer variables
+    let countdownInterval;
+
+    function startCountdown(expiresAt) {
+      clearInterval(countdownInterval);
+      const timerDiv = document.getElementById('timer');
+
+      function updateTimer() {
+        const now = new Date();
+        const diff = expiresAt - now;
+        if (diff <= 0) {
+          timerDiv.innerText = "⏰ Token expired";
+          clearInterval(countdownInterval);
+          return;
+        }
+        const secondsLeft = Math.floor(diff / 1000);
+        timerDiv.innerText = `⏳ Expires in ${secondsLeft} second${secondsLeft !== 1 ? 's' : ''}`;
+      }
+
+      updateTimer();
+      countdownInterval = setInterval(updateTimer, 1000);
     }
 
     document.getElementById('generateBtn').addEventListener('click', async () => {
@@ -83,9 +113,11 @@
         QRCode.toCanvas(document.getElementById('qr-code'), jsonString, { width: 250 });
 
         document.getElementById('generateResult').innerText = `QR Code generated. Expires at: ${expiresAt.toLocaleTimeString()}`;
+        startCountdown(expiresAt);
       } catch (err) {
         console.error('Error saving token:', err);
         document.getElementById('generateResult').innerText = 'Error generating QR code.';
+        document.getElementById('timer').innerText = '';
       }
     });
   </script>
