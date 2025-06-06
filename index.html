@@ -51,7 +51,7 @@
 
       try {
         const now = new Date();
-        const expires = new Date(now.getTime() + 10 * 60  ); // 1 minute
+        const expires = new Date(now.getTime() + 10 * 60 * 1000 ); // 1 minute
 
         const fingerprint = await hashString(uid);
         const rawToken = `${uid}-${now.toISOString()}`;
