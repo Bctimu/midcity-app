@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QR Code Analytics</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js" type="module"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js" type="module"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 40px;
+      max-width: 1000px;
+      margin: auto;
+    }
+    h1 {
+      text-align: center;
+    }
+    .metrics {
+      display: flex;
+      justify-content: space-around;
+      margin: 30px 0;
+    }
+    .metric-box {
+      background: #f5f5f5;
+      padding: 20px;
+      border-radius: 10px;
+      width: 30%;
+      text-align: center;
+    }
+    canvas {
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+  <h1>QR Code System Analytics</h1>
+
+  <div class="metrics">
+    <div class="metric-box">
+      <h2 id="totalGenerated">0</h2>
+      <p>Total QR Codes Generated</p>
+    </div>
+    <div class="metric-box">
+      <h2 id="totalScanned">0</h2>
+      <p>Total Successful Scans</p>
+    </div>
+    <div class="metric-box">
+      <h2 id="totalExpired">0</h2>
+      <p>Total Expired Without Scanning</p>
+    </div>
+  </div>
+
+  <canvas id="dailyChart" height="120"></canvas>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
+      authDomain: "admin-17c3d.firebaseapp.com",
+      projectId: "admin-17c3d",
+      storageBucket: "admin-17c3d.appspot.com",
+      messagingSenderId: "456331474186",
+      appId: "1:456331474186:web:0385a740d37862f82af6f3",
+      measurementId: "G-DTP30VXLN7"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const tokenCol = collection(db, "valid_tokens");
+
+    let chartInstance;
+
+    function updateDashboard(docs) {
+      let totalGenerated = 0;
+      let totalScanned = 0;
+      let totalExpired = 0;
+      const dayMap = {};
+      const now = new Date();
+
+      docs.forEach(doc => {
+        const data = doc.data();
+        totalGenerated++;
+
+        const createdAt = new Date(data.createdAt);
+        const expiresAt = new Date(data.expiresAt);
+
+        const dateKey = createdAt.toISOString().split("T")[0];
+        dayMap[dateKey] = (dayMap[dateKey] || 0) + 1;
+
+        if (data.scannedAt) {
+          totalScanned++;
+        } else if (expiresAt < now) {
+          totalExpired++;
+        }
+      });
+
+      document.getElementById("totalGenerated").textContent = totalGenerated;
+      document.getElementById("totalScanned").textContent = totalScanned;
+      document.getElementById("totalExpired").textContent = totalExpired;
+
+      const labels = Object.keys(dayMap).sort();
+      const dataPoints = labels.map(date => dayMap[date]);
+
+      const ctx = document.getElementById("dailyChart").getContext("2d");
+
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: "QR Codes Generated",
+            data: dataPoints,
+            backgroundColor: "#36A2EB"
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            title: {
+              display: true,
+              text: "QR Code Generation by Day"
+            }
+          }
+        }
+      });
+    }
+
+    onSnapshot(tokenCol, (snapshot) => {
+      updateDashboard(snapshot.docs);
+    });
+  </script>
+</body>
+</html>
