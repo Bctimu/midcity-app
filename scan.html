@@ -1,26 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>QR Scanner</title>
-  <script src="https://unpkg.com/html5-qrcode"></script>
-  <style>
-    #result {
-      font-size: 1.5rem;
-      margin-top: 20px;
-    }
-  </style>
-</head>
-<body>
-  <h1>Scan Resident QR</h1>
-  <div id="reader" style="width:300px;"></div>
-  <div id="result">Waiting for scan...</div>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QR Code Scanner</title>
 
+  <!-- Scanner + FingerprintJS + Firebase -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://openfpcdn.io/fingerprintjs/v4"></script>
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import {
-      getFirestore, collection, query, where, getDocs, limit
-    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+      getFirestore,
+      collection,
+      query,
+      where,
+      getDocs
+    } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
@@ -34,53 +30,118 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const tokensRef = collection(db, "residentTokens");
 
-    const resultElem = document.getElementById("result");
-    const scanner = new Html5Qrcode("reader");
+    let scanner = null;
+    let deviceFingerprint = null;
 
-    async function handleScan(result) {
-      scanner.pause();
-      resultElem.textContent = "QR code scanned. Verifying...";
+    async function getDeviceFingerprint() {
+      const fp = await FingerprintJS.load();
+      const result = await fp.get();
+      return result.visitorId;
+    }
 
-      try {
-        const url = new URL(result);
-        const scannedToken = url.searchParams.get("token");
+    async function validateToken(scannedToken) {
+      const tokensRef = collection(db, "residentTokens");
+      const q = query(tokensRef, where("hash", "==", scannedToken));
 
-        if (!scannedToken) {
-          resultElem.textContent = "Invalid QR format. No token found.";
-          restartScanner();
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        return { valid: false, reason: "QR code not found in database" };
+      }
+
+      const doc = querySnapshot.docs[0];
+      const data = doc.data();
+
+      // Validate required fields
+      const requiredFields = [
+        "uid", "fingerprint", "hash", "createdAt", "expiresAt", "timestamp"
+      ];
+      for (const field of requiredFields) {
+        if (!(field in data) || data[field] === null || data[field] === undefined) {
+          return { valid: false, reason: `Missing or empty field: ${field}` };
+        }
+      }
+
+      // Validate expiration
+      const now = new Date();
+      const expiresAt = new Date(data.expiresAt);
+      if (now > expiresAt) {
+        return { valid: false, reason: "QR code has expired" };
+      }
+
+      // Validate fingerprint
+      if (data.fingerprint !== deviceFingerprint) {
+        return { valid: false, reason: "This QR code was not created for this device" };
+      }
+
+      return { valid: true, data };
+    }
+
+    function showResult(msg, isValid) {
+      const resultEl = document.getElementById("result");
+      resultEl.innerHTML = msg;
+      resultEl.style.color = isValid ? "green" : "red";
+    }
+
+    async function handleScan(decodedText) {
+      if (decodedText.includes("token=")) {
+        const token = new URL(decodedText).searchParams.get("token");
+        if (!token) {
+          showResult("Invalid QR code format", false);
           return;
         }
 
-        const q = query(tokensRef, where("hash", "==", scannedToken), limit(1));
-        const querySnapshot = await getDocs(q);
+        scanner.pause();
+        const validation = await validateToken(token);
 
-        if (!querySnapshot.empty) {
-          resultElem.textContent = "✅ Verified resident QR!";
+        if (validation.valid) {
+          showResult(`✅ Valid Token! UID: ${validation.data.uid}`, true);
         } else {
-          resultElem.textContent = "❌ Invalid or unknown QR code.";
-          restartScanner();
+          showResult(`❌ Invalid: ${validation.reason}`, false);
+          setTimeout(() => scanner.resume(), 5000);
         }
-      } catch (err) {
-        resultElem.textContent = "❌ Error reading QR.";
-        console.error(err);
-        restartScanner();
+      } else {
+        showResult("❌ Unrecognized QR Code Format", false);
+        scanner.pause();
+        setTimeout(() => scanner.resume(), 5000);
       }
     }
 
-    function restartScanner() {
-      setTimeout(() => {
-        resultElem.textContent = "Waiting for scan...";
-        scanner.resume();
-      }, 5000);
-    }
+    window.addEventListener("DOMContentLoaded", async () => {
+      // Get fingerprint first
+      deviceFingerprint = await getDeviceFingerprint();
 
-    scanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      handleScan
-    );
+      scanner = new Html5Qrcode("scanner");
+      scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 250 },
+        handleScan,
+        error => {}
+      );
+    });
   </script>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    #scanner {
+      width: 100%;
+      max-width: 400px;
+      margin: 20px auto;
+    }
+    #result {
+      font-size: 18px;
+      font-weight: bold;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Scan Resident QR Code</h1>
+  <div id="scanner"></div>
+  <div id="result">Awaiting scan...</div>
 </body>
 </html>
