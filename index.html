@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>QR Code Generator</title>
+  <title>QR Code Generator with Timer</title>
 
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -13,20 +13,21 @@
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
   <style>
-    body { font-family: Arial, sans-serif; padding: 2rem; }
+    body { font-family: Arial, sans-serif; padding: 2rem; text-align: center; }
     #qrcode { margin-top: 20px; }
-    button { font-size: 1rem; padding: 0.5rem 1rem; }
+    button { font-size: 1rem; padding: 0.5rem 1rem; margin-top: 1rem; cursor: pointer; }
     #message { margin-top: 10px; font-weight: bold; }
+    #timer { font-size: 1.5rem; margin-top: 10px; color: #ff0000; }
   </style>
 </head>
 <body>
   <h1>Generate Resident QR Code</h1>
   <button id="generateBtn">Generate QR Code</button>
   <div id="qrcode"></div>
+  <div id="timer"></div>
   <div id="message"></div>
 
   <script>
-    // Your Firebase config here
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -44,31 +45,42 @@
     const generateBtn = document.getElementById('generateBtn');
     const qrcodeDiv = document.getElementById('qrcode');
     const messageDiv = document.getElementById('message');
+    const timerDiv = document.getElementById('timer');
 
-    generateBtn.addEventListener('click', async () => {
-      // Clear previous QR and message
+    let countdownInterval = null;
+
+    generateBtn.addEventListener('click', () => {
+      generateAndDisplayQRCode();
+    });
+
+    // Generate QR immediately on page load
+    window.onload = () => {
+      generateAndDisplayQRCode();
+    };
+
+    async function generateAndDisplayQRCode() {
+      clearInterval(countdownInterval);
       qrcodeDiv.innerHTML = '';
       messageDiv.textContent = '';
+      timerDiv.textContent = '';
 
-      // Generate a random token (e.g. UUID v4)
+      // Generate token (UUID v4 style)
       const token = generateToken();
 
-      // Create token data with 1-minute expiry
+      // Setup Firestore token data with 1 min expiry
       const createdAt = new Date();
-      const expiresAt = new Date(createdAt.getTime() + 1 * 60 * 1000); // 1 min later
+      const expiresAt = new Date(createdAt.getTime() + 1 * 60 * 1000); // +1 min
 
       const tokenData = {
         token,
         createdAt: firebase.firestore.Timestamp.fromDate(createdAt),
         expiresAt: firebase.firestore.Timestamp.fromDate(expiresAt),
-        // fingerprint field removed
       };
 
       try {
-        // Save token data to Firestore
         await firestore.collection('valid_tokens').doc(token).set(tokenData);
 
-        // Generate QR code with token string
+        // Generate QR code canvas
         QRCode.toCanvas(token, { width: 250 }, (error, canvas) => {
           if (error) {
             messageDiv.textContent = 'Error generating QR code.';
@@ -76,18 +88,42 @@
             return;
           }
           qrcodeDiv.appendChild(canvas);
-          messageDiv.textContent = 'QR Code generated! It will expire in 1 minute.';
+          messageDiv.textContent = 'QR Code generated! Expires in 1:00.';
+          startCountdown(60); // 60 seconds countdown
         });
       } catch (err) {
         messageDiv.textContent = 'Error saving token to database.';
         console.error(err);
       }
-    });
+    }
 
-    // Simple random token generator (UUID v4 style)
+    function startCountdown(seconds) {
+      let remaining = seconds;
+      updateTimerDisplay(remaining);
+      countdownInterval = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          clearInterval(countdownInterval);
+          timerDiv.textContent = 'Expired';
+          qrcodeDiv.innerHTML = '';
+          messageDiv.textContent = 'QR Code expired. Generate a new one.';
+          return;
+        }
+        updateTimerDisplay(remaining);
+      }, 1000);
+    }
+
+    function updateTimerDisplay(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      timerDiv.textContent = `Expires in ${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    // UUID v4 generator
     function generateToken() {
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0,
+              v = c === 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
       });
     }
