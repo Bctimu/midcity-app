@@ -4,14 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>QR Code Generator</title>
-
-  <!-- QR Code Library -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
-  <!-- Firebase -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
+    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
@@ -26,130 +23,59 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    async function hashString(str) {
-      const data = new TextEncoder().encode(str);
-      const hash = await crypto.subtle.digest('SHA-256', data);
-      return Array.from(new Uint8Array(hash))
-        .map(b => b.toString(16).padStart(2, '0')).join('');
+    const uid = new URLSearchParams(window.location.search).get("uid");
+    if (!uid) {
+      alert("Missing UID in URL");
+      throw new Error("Missing UID");
     }
 
-    let countdownTimer = null;
-
-    async function generateQRCode(uid) {
-      const qrcodeContainer = document.getElementById("qrcode");
-      const countdownEl = document.getElementById("countdown");
-      const errorEl = document.getElementById("error");
-      const button = document.getElementById("regenerateBtn");
-
-      qrcodeContainer.innerHTML = "";
-      qrcodeContainer.style.opacity = 1;
-      countdownEl.textContent = "";
-      errorEl.textContent = "";
-
-      if (countdownTimer) clearInterval(countdownTimer);
-      button.disabled = true;
-
-      try {
-        const now = new Date();
-        const expires = new Date(now.getTime() + 10 * 60 * 100 ); // 1 minute
-
-        const fingerprint = await hashString(uid);
-        const rawToken = `${uid}-${now.toISOString()}`;
-        const hash = await hashString(rawToken);
-
-        const docData = {
-          uid: uid,
-          fingerprint: fingerprint,
-          hash: hash,
-          createdAt: now.toISOString(),
-          expiresAt: expires.toISOString(),
-          timestamp: serverTimestamp()
-        };
-
-        await addDoc(collection(db, "valid_tokens"), docData);
-
-        const qrURL = `https://yourdomain.com/scan.html?token=${hash}`;
-        new QRCode(qrcodeContainer, {
-          text: qrURL,
-          width: 256,
-          height: 256
-        });
-
-        let timeLeft = 60;
-        countdownTimer = setInterval(() => {
-          const minutes = Math.floor(timeLeft / 60);
-          const seconds = timeLeft % 60;
-          countdownEl.textContent = `QR Code expires in: ${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-          if (timeLeft <= 0) {
-            clearInterval(countdownTimer);
-            countdownEl.textContent = "QR Code expired";
-            qrcodeContainer.style.opacity = 0.3;
-            qrcodeContainer.innerHTML += "<div style='position:absolute;color:red;font-weight:bold;font-size:18px;'>EXPIRED</div>";
-            button.disabled = false;
-          }
-
-          timeLeft--;
-        }, 1000);
-
-      } catch (err) {
-        console.error("QR Generation Failed:", err);
-        errorEl.textContent = "QR generation failed. Check console.";
-        button.disabled = false;
-      }
+    function hashString(str) {
+      const buffer = new TextEncoder().encode(str);
+      return crypto.subtle.digest("SHA-256", buffer).then(hash => {
+        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+      });
     }
 
-    window.addEventListener("DOMContentLoaded", async () => {
-      const params = new URLSearchParams(window.location.search);
-      const uid = params.get("uid");
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    const expiresAt = new Date(now + 60000).toISOString();
 
-      if (!uid) {
-        document.getElementById("error").textContent = "UID not found in URL.";
-        return;
-      }
+    const fpPromise = FingerprintJS.load();
 
-      const button = document.getElementById("regenerateBtn");
-      button.addEventListener("click", () => generateQRCode(uid));
+    fpPromise.then(fp => fp.get()).then(async result => {
+      const fingerprint = result.visitorId;
+      const rawData = `${uid}_${fingerprint}_${createdAt}`;
+      const hash = await hashString(rawData);
 
-      await generateQRCode(uid);
+      const docRef = doc(db, "valid_tokens", hash);
+      await setDoc(docRef, {
+        uid,
+        fingerprint,
+        createdAt,
+        expiresAt
+      });
+
+      const qrURL = `${window.location.origin}/scan.html?token=${hash}`;
+      QRCode.toCanvas(document.getElementById("qrcode"), qrURL, error => {
+        if (error) console.error(error);
+      });
+
+      const countdown = document.getElementById("countdown");
+      let secondsLeft = 60;
+      countdown.textContent = `Token expires in: ${secondsLeft}s`;
+      setInterval(() => {
+        secondsLeft--;
+        countdown.textContent = `Token expires in: ${secondsLeft}s`;
+        if (secondsLeft <= 0) {
+          countdown.textContent = "Token expired.";
+        }
+      }, 1000);
     });
   </script>
-
-  <style>
-    body {
-      font-family: sans-serif;
-      text-align: center;
-      padding: 40px;
-    }
-    #qrcode {
-      position: relative;
-      margin-top: 20px;
-      display: inline-block;
-      transition: opacity 0.5s ease-in-out;
-    }
-    #countdown {
-      margin-top: 15px;
-      font-size: 18px;
-      font-weight: bold;
-      color: #333;
-    }
-    #error {
-      color: red;
-      margin-top: 10px;
-    }
-    #regenerateBtn {
-      margin-top: 20px;
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-  </style>
 </head>
 <body>
-  <h1>Your QR Code</h1>
-  <div id="qrcode"></div>
-  <div id="countdown"></div>
-  <button id="regenerateBtn">Regenerate QR Code</button>
-  <p id="error"></p>
+  <h1>QR Code Generator</h1>
+  <canvas id="qrcode"></canvas>
+  <p id="countdown"></p>
 </body>
 </html>
