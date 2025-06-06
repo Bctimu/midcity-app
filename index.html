@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Generated Qr Code</title>
+  <title>Generated QR Code</title>
 
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -49,6 +49,12 @@
 
     let countdownInterval = null;
 
+    // Get uid from URL query param
+    function getUidFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('uid') || "UnknownUser";
+    }
+
     generateBtn.addEventListener('click', () => {
       generateAndDisplayQRCode();
     });
@@ -64,6 +70,8 @@
       messageDiv.textContent = '';
       timerDiv.textContent = '';
 
+      const uid = getUidFromUrl();
+
       // Generate token (UUID v4 style)
       const token = generateToken();
 
@@ -73,6 +81,7 @@
 
       const tokenData = {
         token,
+        userId: uid,
         createdAt: firebase.firestore.Timestamp.fromDate(createdAt),
         expiresAt: firebase.firestore.Timestamp.fromDate(expiresAt),
       };
