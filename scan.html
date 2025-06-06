@@ -13,9 +13,9 @@
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
-    body { font-family: Arial, sans-serif; padding: 2rem; }
+    body { font-family: Arial, sans-serif; padding: 2rem; text-align: center; }
     #reader { width: 300px; margin: auto; }
-    #result { margin-top: 20px; font-weight: bold; font-size: 1.2rem; }
+    #result { font-size: 1.2rem; margin-top: 1rem; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -24,7 +24,6 @@
   <div id="result"></div>
 
   <script>
-    // Your Firebase config here
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -41,55 +40,69 @@
 
     const resultDiv = document.getElementById('result');
 
+    // Get uid from URL (if you want to use it for anything)
+    function getUidFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('uid') || "UnknownUser";
+    }
+    const uid = getUidFromUrl();
+
+    function verifyToken(token) {
+      const docRef = firestore.collection('valid_tokens').doc(token);
+      docRef.get()
+        .then(doc => {
+          if (!doc.exists) {
+            resultDiv.textContent = 'Invalid QR Code: Token not found.';
+            return;
+          }
+
+          const tokenData = doc.data();
+          const now = new Date();
+
+          if (tokenData.expiresAt.toDate() < now) {
+            resultDiv.textContent = 'QR Code expired.';
+            return;
+          }
+
+          // Optionally check if uid matches (if you want)
+          // if(tokenData.userId !== uid) {
+          //   resultDiv.textContent = 'User ID mismatch.';
+          //   return;
+          // }
+
+          resultDiv.textContent = `QR Code verified! User: ${tokenData.userId}`;
+        })
+        .catch(error => {
+          resultDiv.textContent = 'Error verifying QR Code.';
+          console.error(error);
+        });
+    }
+
     function onScanSuccess(decodedText, decodedResult) {
-      // Stop scanning after first successful scan
-      html5QrcodeScanner.clear().catch(error => {
-        console.error('Failed to clear scanner', error);
+      // Stop scanning to avoid multiple detections
+      html5QrcodeScanner.clear().then(() => {
+        verifyToken(decodedText);
+      }).catch(err => {
+        console.error('Failed to clear scanner:', err);
       });
-
-      resultDiv.textContent = 'Verifying QR code...';
-
-      verifyToken(decodedText);
     }
 
-    async function verifyToken(token) {
-      try {
-        const docRef = firestore.collection('tokens').doc(token);
-        const doc = await docRef.get();
-
-        if (!doc.exists) {
-          resultDiv.textContent = 'Invalid QR Code: Token not found.';
-          return;
-        }
-
-        const tokenData = doc.data();
-        const now = new Date();
-
-        // Check expiry
-        if (tokenData.expiresAt.toDate() < now) {
-          resultDiv.textContent = 'QR Code expired.';
-          return;
-        }
-
-        // Token valid
-        resultDiv.textContent = 'QR Code is valid! Access granted.';
-      } catch (error) {
-        console.error('Error verifying token:', error);
-        resultDiv.textContent = 'Error verifying QR code.';
-      }
+    function onScanFailure(error) {
+      // can be ignored or logged
+      // console.warn(`QR scan error: ${error}`);
     }
 
-    // Initialize html5-qrcode scanner
     const html5QrcodeScanner = new Html5Qrcode("reader");
     const config = { fps: 10, qrbox: 250 };
 
     html5QrcodeScanner.start(
       { facingMode: "environment" },
       config,
-      onScanSuccess
+      onScanSuccess,
+      onScanFailure
     ).catch(err => {
       console.error('Unable to start scanning:', err);
-      resultDiv.textContent = 'Error initializing QR scanner.';
+      resultDiv.textContent = 'Unable to start scanner.';
     });
   </script>
 </body>
