@@ -1,306 +1,304 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, getDoc, addDoc, Timestamp, collection } from 'firebase/firestore';
-// Removed: import { Html5Qrcode } from 'html5-qrcode'; // This import caused the resolution error
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business QR Scanner</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter font from Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- html5-qrcode library -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 
-// Main App Component
-const App = () => {
-  // State variables for application logic
-  const [scanResult, setScanResult] = useState('Waiting for scan...');
-  const [cameraStatus, setCameraStatus] = useState('Initializing camera...');
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [dbInstance, setDbInstance] = useState(null);
-  const [authInstance, setAuthInstance] = useState(null);
-  const [currentUserId, setCurrentUserId] = useState('Not authenticated');
-  const [showModal, setShowModal] = useState(false);
-  const [modalMessage, setModalMessage] = useState('');
-  const [modalType, setModalType] = useState('info'); // 'info', 'success', 'error'
-  const [isHtml5QrcodeLoaded, setIsHtml5QrcodeLoaded] = useState(false); // New state for script loading
-
-  // Ref for Html5QrcodeScanner instance to manage its lifecycle
-  const html5QrCodeScannerRef = useRef(null);
-
-  // Get merchantId from URL parameters
-  const merchantId = new URLSearchParams(window.location.search).get("uid");
-
-  // Global variables provided by the Canvas environment
-  const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-  const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-  const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-  // Effect for Firebase Initialization and Authentication
-  useEffect(() => {
-    // Check if firebaseConfig is available before initializing
-    if (Object.keys(firebaseConfig).length === 0) {
-      console.error("Firebase config is not available. Cannot initialize Firebase.");
-      setCameraStatus("Error: Firebase not configured.");
-      return;
-    }
-
-    try {
-      const app = initializeApp(firebaseConfig);
-      const db = getFirestore(app);
-      const auth = getAuth(app);
-
-      setDbInstance(db);
-      setAuthInstance(auth);
-
-      // Listen for authentication state changes
-      const unsubscribe = onAuthStateChanged(auth, async (user) => {
-        if (user) {
-          setCurrentUserId(user.uid);
-          setIsAuthReady(true);
-          console.log("Firebase authenticated with UID:", user.uid);
-        } else {
-          // Sign in anonymously if no initial auth token or user is not signed in
-          try {
-            if (initialAuthToken) {
-              await signInWithCustomToken(auth, initialAuthToken);
-              console.log("Signed in with custom token.");
-            } else {
-              await signInAnonymously(auth);
-              console.log("Signed in anonymously.");
-            }
-          } catch (error) {
-            console.error("Firebase authentication error:", error);
-            setCameraStatus("Error: Authentication failed.");
-            setIsAuthReady(true); // Still set to true to allow camera to try initializing
-          }
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f3f4f6; /* bg-gray-100 */
+            color: #374151; /* text-gray-800 */
         }
-      });
-
-      // Cleanup function for auth listener
-      return () => unsubscribe();
-    } catch (error) {
-      console.error("Error initializing Firebase:", error);
-      setCameraStatus("Error: Firebase initialization failed.");
-    }
-  }, []); // Empty dependency array means this runs once on component mount
-
-  // Effect to check for Html5Qrcode script loading
-  useEffect(() => {
-    const checkHtml5Qrcode = setInterval(() => {
-      if (window.Html5Qrcode) {
-        console.log("Html5Qrcode script loaded successfully.");
-        setIsHtml5QrcodeLoaded(true);
-        clearInterval(checkHtml5Qrcode);
-      }
-    }, 100); // Check every 100ms
-
-    return () => clearInterval(checkHtml5Qrcode); // Cleanup interval on unmount
-  }, []); // Run once on component mount
-
-  // Effect for Camera Initialization and QR Scanner
-  useEffect(() => {
-    // Wait for Firebase to be ready AND Html5Qrcode script to be loaded
-    if (!isAuthReady || !dbInstance || !authInstance || !isHtml5QrcodeLoaded) {
-      return;
-    }
-
-    const qrCodeRegionId = "reader";
-    let html5QrCode = html5QrCodeScannerRef.current;
-
-    const startScanner = async () => {
-      setCameraStatus("Requesting camera access...");
-      try {
-        // Initialize Html5Qrcode instance if not already
-        if (!html5QrCode) {
-          html5QrCode = new window.Html5Qrcode(qrCodeRegionId); // Use window.Html5Qrcode
-          html5QrCodeScannerRef.current = html5QrCode;
+        #reader {
+            width: 100%;
+            max-width: 300px; /* Adjusted for better mobile view */
+            height: auto;
+            margin: 0 auto 1.5rem auto; /* mb-6 */
+            border: 2px solid #d1d5db; /* border-2 border-gray-300 */
+            border-radius: 0.5rem; /* rounded-lg */
+            overflow: hidden;
         }
-
-        // Attempt to start with facingMode 'environment' (back camera)
-        await html5QrCode.start({ facingMode: { exact: "environment" } }, { fps: 10, qrbox: 250 }, onScanSuccess, onScanError);
-        setCameraStatus("Scanning with back camera...");
-      } catch (err) {
-        console.warn("Could not start back camera with exact 'environment' facing mode. Trying other options...", err);
-        setCameraStatus("Finding available cameras...");
-
-        try {
-          const cameras = await window.Html5Qrcode.getCameras(); // Use window.Html5Qrcode.getCameras
-          if (cameras && cameras.length) {
-            let selectedCameraId = null;
-            // Try to find a camera explicitly labeled as 'back' or 'environment'
-            const backCamera = cameras.find(camera =>
-              camera.label.toLowerCase().includes('back') || camera.label.toLowerCase().includes('environment')
-            );
-
-            if (backCamera) {
-              selectedCameraId = backCamera.id;
-              setCameraStatus("Scanning with identified back camera...");
-            } else if (cameras.length > 1) {
-              // If no explicit back camera, but more than one camera, try the second one
-              selectedCameraId = cameras[1].id;
-              setCameraStatus("Scanning with second camera (likely back)...");
-            } else {
-              // Fallback to the first camera if only one is available
-              selectedCameraId = cameras[0].id;
-              setCameraStatus("Scanning with default camera...");
-            }
-
-            if (selectedCameraId) {
-              await html5QrCode.start(selectedCameraId, { fps: 10, qrbox: 250 }, onScanSuccess, onScanError);
-            } else {
-              setCameraStatus("No suitable camera found.");
-              showCustomModal('Error', 'No suitable camera found for scanning.', 'error');
-            }
-          } else {
-            setCameraStatus("No cameras found on this device.");
-            showCustomModal('Error', 'No cameras found on this device.', 'error');
-          }
-        } catch (cameraErr) {
-          console.error("Error accessing cameras:", cameraErr);
-          setCameraStatus("Error accessing camera.");
-          showCustomModal('Error', `Failed to access camera: ${cameraErr.message}`, 'error');
-        }
-      }
-    };
-
-    // Call startScanner only if html5QrCodeScannerRef.current is not already set
-    if (!html5QrCodeScannerRef.current) {
-        startScanner();
-    }
-
-
-    // Cleanup function: stop the scanner when the component unmounts
-    return () => {
-      if (html5QrCodeScannerRef.current && html5QrCodeScannerRef.current.isScanning) {
-        html5QrCodeScannerRef.current.stop().catch(err => console.error("Error stopping scanner:", err));
-      }
-    };
-  }, [isAuthReady, dbInstance, authInstance, isHtml5QrcodeLoaded]); // Re-run when Firebase auth/db instances and Html5Qrcode are ready
-
-  // Function to handle successful QR code scans
-  const onScanSuccess = async (decodedText) => {
-    setScanResult("Checking QR code...");
-    if (html5QrCodeScannerRef.current && html5QrCodeScannerRef.current.isScanning) {
-      html5QrCodeScannerRef.current.pause(); // Pause scanner to prevent multiple scans
-    }
-
-    try {
-      // Reference to the public valid_tokens collection
-      const validTokensRef = collection(dbInstance, `artifacts/${appId}/public/data/valid_tokens`);
-      const tokenDocRef = doc(validTokensRef, decodedText);
-      const docSnap = await getDoc(tokenDocRef);
-
-      if (!docSnap.exists()) {
-        setScanResult("Invalid token.");
-        showCustomModal('Invalid Token', 'The scanned QR code is not a valid token.', 'error');
-        html5QrCodeScannerRef.current.resume();
-        return;
-      }
-
-      const data = docSnap.data();
-      const now = Timestamp.now();
-
-      if (data.expiresAt && data.expiresAt.toDate() < now.toDate()) {
-        setScanResult("Token expired.");
-        showCustomModal('Token Expired', 'This QR code has expired.', 'error');
-        html5QrCodeScannerRef.current.resume();
-        return;
-      }
-
-      // Reference to the private qrScans collection for the current user
-      const qrScansRef = collection(dbInstance, `artifacts/${appId}/users/${currentUserId}/qrScans`);
-      await addDoc(qrScansRef, {
-        token: decodedText,
-        scannedAt: Timestamp.now(),
-        // Use merchantId from URL param, and currentUserId from Firebase Auth
-        scannedBy: merchantId || currentUserId, // Fallback to currentUserId if merchantId is not set
-        originalUserId: data.userId, // The user who originally generated the token
-        createdAt: data.createdAt,
-      });
-
-      setScanResult("Scan logged successfully!");
-      showCustomModal('Success', 'QR code verified and scan logged!', 'success');
-      // Resume scanner after a short delay for user to read the message
-      setTimeout(() => html5QrCodeScannerRef.current.resume(), 1500);
-    } catch (err) {
-      console.error("Error during scan processing or Firestore operation:", err);
-      setScanResult("Error processing scan.");
-      showCustomModal('Error', `An error occurred: ${err.message}`, 'error');
-      if (html5QrCodeScannerRef.current) {
-        html5QrCodeScannerRef.current.resume();
-      }
-    }
-  };
-
-  // Function to handle errors during QR code scanning
-  const onScanError = (errorMessage) => {
-    // console.warn("QR Scan Error:", errorMessage); // Log errors for debugging, but don't show to user constantly
-    // Avoid setting scanResult on every minor error, only on significant ones if needed
-  };
-
-  // Function to display a custom modal message
-  const showCustomModal = (title, message, type) => {
-    setModalMessage({ title, message });
-    setModalType(type);
-    setShowModal(true);
-  };
-
-  // Function to close the custom modal
-  const closeCustomModal = () => {
-    setShowModal(false);
-    setModalMessage('');
-    setModalType('info');
-  };
-
-  return (
-    // Tailwind CSS classes for responsive design and aesthetics
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 font-sans text-gray-800">
-      {/* Script for Tailwind CSS */}
-      <script src="https://cdn.tailwindcss.com"></script>
-      {/* Script for html5-qrcode library - now loaded globally */}
-      <script src="https://unpkg.com/html5-qrcode"></script>
-      {/* Link for Inter font */}
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
-
-      <style>{`
-        body { font-family: 'Inter', sans-serif; }
+        /* Custom modal overlay styles */
         .modal-overlay {
-          background-color: rgba(0, 0, 0, 0.6);
-          backdrop-filter: blur(5px);
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
         }
-      `}</style>
+    </style>
+</head>
+<body>
 
-      <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md text-center">
-        <h1 className="text-3xl font-bold mb-4 text-blue-700">Business QR Scanner</h1>
-        <p className="text-sm text-gray-600 mb-4">Merchant ID (from URL): <span className="font-semibold text-blue-600">{merchantId || 'N/A'}</span></p>
-        <p className="text-sm text-gray-600 mb-6">Your User ID: <span className="font-semibold text-blue-600 break-all">{currentUserId}</span></p>
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md text-center">
+        <h1 class="text-3xl font-bold mb-4 text-blue-700">Business QR Scanner</h1>
+        <p class="text-sm text-gray-600 mb-4">Merchant ID (from URL): <span id="merchant-id" class="font-semibold text-blue-600">N/A</span></p>
+        <p class="text-sm text-gray-600 mb-6">Your User ID: <span id="current-user-id" class="font-semibold text-blue-600 break-all">Not authenticated</span></p>
 
-        <div id="reader" className="w-full h-auto max-w-xs mx-auto mb-6 border-2 border-gray-300 rounded-lg overflow-hidden">
-          {/* QR code reader will be rendered here by html5-qrcode */}
+        <div id="reader"></div>
+
+        <p id="camera-status" class="text-md font-semibold text-gray-700 mb-4">Initializing camera...</p>
+        <div id="scan-result" class="bg-blue-50 p-3 rounded-lg text-blue-800 font-medium break-words">
+            Waiting for scan...
         </div>
-
-        <p className="text-md font-semibold text-gray-700 mb-4">{cameraStatus}</p>
-        <div className="bg-blue-50 p-3 rounded-lg text-blue-800 font-medium break-words">
-          {scanResult}
-        </div>
-      </div>
-
-      {/* Custom Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay">
-          <div className="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full transform transition-all duration-300 scale-100">
-            <h2 className={`text-xl font-bold mb-3 ${modalType === 'success' ? 'text-green-600' : modalType === 'error' ? 'text-red-600' : 'text-blue-600'}`}>
-              {modalMessage.title}
-            </h2>
-            <p className="text-gray-700 mb-5">{modalMessage.message}</p>
-            <button
-              onClick={closeCustomModal}
-              className={`w-full py-2 px-4 rounded-lg font-semibold transition duration-200 ease-in-out
-                ${modalType === 'success' ? 'bg-green-500 hover:bg-green-600 text-white' :
-                  modalType === 'error' ? 'bg-red-500 hover:bg-red-600 text-white' :
-                  'bg-blue-500 hover:bg-blue-600 text-white'}`}
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      )}
     </div>
-  );
-};
 
-export default App;
+    <!-- Custom Modal Structure -->
+    <div id="custom-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 modal-overlay">
+        <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full transform transition-all duration-300 scale-100">
+            <h2 id="modal-title" class="text-xl font-bold mb-3"></h2>
+            <p id="modal-message" class="text-gray-700 mb-5"></p>
+            <button id="modal-ok-button" class="w-full py-2 px-4 rounded-lg font-semibold transition duration-200 ease-in-out bg-blue-500 hover:bg-blue-600 text-white">
+                OK
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Global variables from Canvas environment (mocked for direct HTML execution)
+        const __app_id = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const __firebase_config = typeof __firebase_config !== 'undefined' ? __firebase_config : JSON.stringify({
+            apiKey: "YOUR_API_KEY", // Replace with your actual Firebase API Key
+            authDomain: "your-project-id.firebaseapp.com",
+            projectId: "your-project-id",
+            storageBucket: "your-project-id.appspot.com",
+            messagingSenderId: "your-messaging-sender-id",
+            appId: "your-app-id",
+            measurementId: "your-measurement-id"
+        });
+        const __initial_auth_token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        const appId = __app_id;
+        const firebaseConfig = JSON.parse(__firebase_config);
+
+        // DOM Elements
+        const merchantIdEl = document.getElementById('merchant-id');
+        const currentUserIdEl = document.getElementById('current-user-id');
+        const cameraStatusEl = document.getElementById('camera-status');
+        const scanResultEl = document.getElementById('scan-result');
+        const customModal = document.getElementById('custom-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalMessage = document.getElementById('modal-message');
+        const modalOkButton = document.getElementById('modal-ok-button');
+
+        let db;
+        let auth;
+        let html5QrCodeScanner;
+        let currentUserId = 'Not authenticated'; // Default before auth
+
+        // Get merchantId from URL parameters
+        const merchantId = new URLSearchParams(window.location.search).get("uid");
+        if (merchantId) {
+            merchantIdEl.textContent = merchantId;
+        }
+
+        // Function to show custom modal
+        function showCustomModal(title, message, type) {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            // Update button/title color based on type
+            modalTitle.className = `text-xl font-bold mb-3 ${type === 'success' ? 'text-green-600' : type === 'error' ? 'text-red-600' : 'text-blue-600'}`;
+            modalOkButton.className = `w-full py-2 px-4 rounded-lg font-semibold transition duration-200 ease-in-out ${type === 'success' ? 'bg-green-500 hover:bg-green-600 text-white' : type === 'error' ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'}`;
+            customModal.classList.remove('hidden');
+            customModal.classList.add('flex');
+        }
+
+        // Function to close custom modal
+        function closeCustomModal() {
+            customModal.classList.remove('flex');
+            customModal.classList.add('hidden');
+        }
+
+        // Event listener for modal OK button
+        modalOkButton.addEventListener('click', closeCustomModal);
+
+        // Initialize Firebase and Authentication
+        async function initializeFirebase() {
+            try {
+                const app = firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                auth = firebase.auth();
+
+                firebase.auth().onAuthStateChanged(async (user) => {
+                    if (user) {
+                        currentUserId = user.uid;
+                        currentUserIdEl.textContent = user.uid;
+                        console.log("Firebase authenticated with UID:", user.uid);
+                        // Start scanner only after auth is ready
+                        startQrScanner();
+                    } else {
+                        try {
+                            if (__initial_auth_token) {
+                                await auth.signInWithCustomToken(__initial_auth_token);
+                                console.log("Signed in with custom token.");
+                            } else {
+                                await auth.signInAnonymously();
+                                console.log("Signed in anonymously.");
+                            }
+                        } catch (error) {
+                            console.error("Firebase authentication error:", error);
+                            cameraStatusEl.textContent = "Error: Authentication failed.";
+                            showCustomModal('Error', `Authentication failed: ${error.message}`, 'error');
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error("Error initializing Firebase:", error);
+                cameraStatusEl.textContent = "Error: Firebase initialization failed.";
+                showCustomModal('Error', `Firebase initialization failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Function to start the QR scanner
+        async function startQrScanner() {
+            const qrCodeRegionId = "reader";
+            cameraStatusEl.textContent = "Requesting camera access...";
+
+            // Ensure Html5Qrcode is available globally
+            if (typeof Html5Qrcode === 'undefined') {
+                console.error("Html5Qrcode is not loaded. Please ensure the script tag is present and loaded.");
+                cameraStatusEl.textContent = "Error: QR library not loaded.";
+                showCustomModal('Error', 'QR code library not loaded. Please try refreshing.', 'error');
+                return;
+            }
+
+            // Initialize Html5Qrcode instance
+            if (!html5QrCodeScanner) {
+                html5QrCodeScanner = new Html5Qrcode(qrCodeRegionId);
+            }
+
+            try {
+                // Attempt to start with facingMode 'environment' (back camera)
+                await html5QrCodeScanner.start({ facingMode: { exact: "environment" } }, { fps: 10, qrbox: 250 }, onScanSuccess, onScanError);
+                cameraStatusEl.textContent = "Scanning with back camera...";
+            } catch (err) {
+                console.warn("Could not start back camera with exact 'environment' facing mode. Trying other options...", err);
+                cameraStatusEl.textContent = "Finding available cameras...";
+
+                try {
+                    const cameras = await Html5Qrcode.getCameras();
+                    if (cameras && cameras.length) {
+                        let selectedCameraId = null;
+                        // Try to find a camera explicitly labeled as 'back' or 'environment'
+                        const backCamera = cameras.find(camera =>
+                            camera.label.toLowerCase().includes('back') || camera.label.toLowerCase().includes('environment')
+                        );
+
+                        if (backCamera) {
+                            selectedCameraId = backCamera.id;
+                            cameraStatusEl.textContent = "Scanning with identified back camera...";
+                        } else if (cameras.length > 1) {
+                            // If no explicit back camera, but more than one camera, try the second one
+                            selectedCameraId = cameras[1].id;
+                            cameraStatusEl.textContent = "Scanning with second camera (likely back)...";
+                        } else {
+                            // Fallback to the first camera if only one is available
+                            selectedCameraId = cameras[0].id;
+                            cameraStatusEl.textContent = "Scanning with default camera...";
+                        }
+
+                        if (selectedCameraId) {
+                            await html5QrCodeScanner.start(selectedCameraId, { fps: 10, qrbox: 250 }, onScanSuccess, onScanError);
+                        } else {
+                            cameraStatusEl.textContent = "No suitable camera found.";
+                            showCustomModal('Error', 'No suitable camera found for scanning.', 'error');
+                        }
+                    } else {
+                        cameraStatusEl.textContent = "No cameras found on this device.";
+                        showCustomModal('Error', 'No cameras found on this device.', 'error');
+                    }
+                } catch (cameraErr) {
+                    console.error("Error accessing cameras:", cameraErr);
+                    cameraStatusEl.textContent = "Error accessing camera.";
+                    showCustomModal('Error', `Failed to access camera: ${cameraErr.message}`, 'error');
+                }
+            }
+        }
+
+        // Function to handle successful QR code scans
+        async function onScanSuccess(decodedText) {
+            scanResultEl.textContent = "Checking QR code...";
+            if (html5QrCodeScanner && html5QrCodeScanner.isScanning) {
+                html5QrCodeScanner.pause(); // Pause scanner to prevent multiple scans
+            }
+
+            try {
+                // Reference to the public valid_tokens collection
+                const validTokensRef = db.collection(`artifacts/${appId}/public/data/valid_tokens`);
+                const docSnap = await validTokensRef.doc(decodedText).get();
+
+                if (!docSnap.exists) {
+                    scanResultEl.textContent = "Invalid token.";
+                    showCustomModal('Invalid Token', 'The scanned QR code is not a valid token.', 'error');
+                    html5QrCodeScanner.resume();
+                    return;
+                }
+
+                const data = docSnap.data();
+                const now = firebase.firestore.Timestamp.now();
+
+                if (data.expiresAt && data.expiresAt.toDate() < now.toDate()) {
+                    scanResultEl.textContent = "Token expired.";
+                    showCustomModal('Token Expired', 'This QR code has expired.', 'error');
+                    html5QrCodeScanner.resume();
+                    return;
+                }
+
+                // Reference to the private qrScans collection for the current user
+                const qrScansRef = db.collection(`artifacts/${appId}/users/${currentUserId}/qrScans`);
+                await qrScansRef.add({
+                    token: decodedText,
+                    scannedAt: firebase.firestore.Timestamp.now(),
+                    scannedBy: merchantId || currentUserId, // Fallback to currentUserId if merchantId is not set
+                    originalUserId: data.userId, // The user who originally generated the token
+                    createdAt: data.createdAt,
+                });
+
+                scanResultEl.textContent = "Scan logged successfully!";
+                showCustomModal('Success', 'QR code verified and scan logged!', 'success');
+                // Resume scanner after a short delay for user to read the message
+                setTimeout(() => html5QrCodeScanner.resume(), 1500);
+            } catch (err) {
+                console.error("Error during scan processing or Firestore operation:", err);
+                scanResultEl.textContent = "Error processing scan.";
+                showCustomModal('Error', `An error occurred: ${err.message}`, 'error');
+                if (html5QrCodeScanner) {
+                    html5QrCodeScanner.resume();
+                }
+            }
+        }
+
+        // Function to handle errors during QR code scanning
+        function onScanError(errorMessage) {
+            // console.warn("QR Scan Error:", errorMessage); // Log errors for debugging, but don't show to user constantly
+            // Avoid setting scanResult on every minor error, only on significant ones if needed
+        }
+
+        // Initialize Firebase when the window loads
+        window.onload = initializeFirebase;
+
+        // Cleanup function for when the page is unloaded (e.g., user navigates away)
+        window.addEventListener('beforeunload', () => {
+            if (html5QrCodeScanner && html5QrCodeScanner.isScanning) {
+                html5QrCodeScanner.stop().catch(err => console.error("Error stopping scanner:", err));
+            }
+        });
+    </script>
+</body>
+</html>
