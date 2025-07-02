@@ -1,140 +1,240 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Generated QR Code</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Generated QR Code</title>
 
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
-  <!-- QRCode.js -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
-  <style>
-    body { font-family: Arial, sans-serif; padding: 2rem; text-align: center; }
-    #qrcode { margin-top: 20px; }
-    button { font-size: 1rem; padding: 0.5rem 1rem; margin-top: 1rem; cursor: pointer; }
-    #message { margin-top: 10px; font-weight: bold; }
-    #timer { font-size: 1.5rem; margin-top: 10px; color: #000000; }
-  </style>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem; /* Add some padding for smaller screens */
+            background-color: #f0f0f0;
+            box-sizing: border-box; /* Include padding in element's total width and height */
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        #qrcode {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center; /* Center the QR code canvas */
+            align-items: center;
+            min-height: 250px; /* Ensure space even if QR code isn't loaded */
+        }
+        canvas {
+            max-width: 100%; /* Make canvas responsive */
+            height: auto; /* Maintain aspect ratio */
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+        }
+        button {
+            font-size: 1.1rem;
+            padding: 0.75rem 1.5rem;
+            margin-top: 1.5rem;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s ease, opacity 0.3s ease;
+        }
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        #message {
+            margin-top: 15px;
+            font-weight: bold;
+            color: #dc3545; /* Red for errors, can be dynamic */
+            text-align: center;
+        }
+        #timer {
+            font-size: 1.6rem;
+            margin-top: 15px;
+            color: #000000;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        /* Basic Media Query for smaller screens */
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+            button {
+                width: 90%; /* Make button wider on small screens */
+                font-size: 1rem;
+                padding: 0.6rem 1.2rem;
+            }
+            #timer {
+                font-size: 1.4rem;
+            }
+        }
+    </style>
 </head>
 <body>
-  <h1>Generated QR Code</h1>
-  <button id="generateBtn">Generate QR Code</button>
-  <div id="qrcode"></div>
-  <div id="timer"></div>
-  <div id="message"></div>
+    <h1>Your Discount QR Code</h1>
+    <button id="generateBtn">Generate New QR Code</button>
+    <div id="qrcode"></div>
+    <div id="timer"></div>
+    <div id="message"></div>
 
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
-      authDomain: "admin-17c3d.firebaseapp.com",
-      projectId: "admin-17c3d",
-      storageBucket: "admin-17c3d.appspot.com",
-      messagingSenderId: "456331474186",
-      appId: "1:456331474186:web:0385a740d37862f82af6f3",
-      measurementId: "G-DTP30VXLN7"
-    };
+    <script>
+        // NOTE: Replace with your actual Firebase config in a production environment
+        // For security, do not hardcode sensitive API keys if this is a public client-side app.
+        // For demonstration, it's fine, but consider Firebase Hosting config or server-side if highly sensitive.
+        const firebaseConfig = {
+            apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
+            authDomain: "admin-17c3d.firebaseapp.com",
+            projectId: "admin-17c3d",
+            storageBucket: "admin-17c3d.appspot.com",
+            messagingSenderId: "456331474186",
+            appId: "1:456331474186:web:0385a740d37862f82af6f3",
+            measurementId: "G-DTP30VXLN7"
+        };
 
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const firestore = firebase.firestore();
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const firestore = firebase.firestore();
 
-    const generateBtn = document.getElementById('generateBtn');
-    const qrcodeDiv = document.getElementById('qrcode');
-    const messageDiv = document.getElementById('message');
-    const timerDiv = document.getElementById('timer');
+        const generateBtn = document.getElementById('generateBtn');
+        const qrcodeDiv = document.getElementById('qrcode');
+        const messageDiv = document.getElementById('message');
+        const timerDiv = document.getElementById('timer');
 
-    let countdownInterval = null;
+        let countdownInterval = null;
 
-    // Get uid from URL query param
-    function getUidFromUrl() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('uid') || "UnknownUser";
-    }
-
-    generateBtn.addEventListener('click', () => {
-      generateAndDisplayQRCode();
-    });
-
-    // Generate QR immediately on page load
-    window.onload = () => {
-      generateAndDisplayQRCode();
-    };
-
-    async function generateAndDisplayQRCode() {
-      clearInterval(countdownInterval);
-      qrcodeDiv.innerHTML = '';
-      messageDiv.textContent = '';
-      timerDiv.textContent = '';
-
-      const uid = getUidFromUrl();
-
-      // Generate token (UUID v4 style)
-      const token = generateToken();
-
-      // Setup Firestore token data with 1 min expiry
-      const createdAt = new Date();
-      const expiresAt = new Date(createdAt.getTime() + 1 * 60 * 1000); // +1 min
-
-      const tokenData = {
-        token,
-        userId: uid,
-        createdAt: firebase.firestore.Timestamp.fromDate(createdAt),
-        expiresAt: firebase.firestore.Timestamp.fromDate(expiresAt),
-      };
-
-      try {
-        await firestore.collection('valid_tokens').doc(token).set(tokenData);
-
-        // Generate QR code canvas
-        QRCode.toCanvas(token, { width: 250 }, (error, canvas) => {
-          if (error) {
-            messageDiv.textContent = 'Error generating QR code.';
-            console.error(error);
-            return;
-          }
-          qrcodeDiv.appendChild(canvas);
-          startCountdown(60); // 60 seconds countdown
-        });
-      } catch (err) {
-        messageDiv.textContent = 'Error saving token to database.';
-        console.error(err);
-      }
-    }
-
-    function startCountdown(seconds) {
-      let remaining = seconds;
-      updateTimerDisplay(remaining);
-      countdownInterval = setInterval(() => {
-        remaining--;
-        if (remaining <= 0) {
-          clearInterval(countdownInterval);
-          timerDiv.textContent = 'Expired';
-          qrcodeDiv.innerHTML = '';
-          messageDiv.textContent = 'QR Code expired. Generate a new one.';
-          return;
+        // Get uid from URL query param
+        function getUidFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            // Default to "resident" if no UID is provided, for testing/demonstration
+            return params.get('uid') || "resident_user_id";
         }
-        updateTimerDisplay(remaining);
-      }, 1000);
-    }
 
-    function updateTimerDisplay(seconds) {
-      const mins = Math.floor(seconds / 60);
-      const secs = seconds % 60;
-      timerDiv.textContent = `Expires in ${mins}:${secs.toString().padStart(2, '0')}`;
-    }
+        generateBtn.addEventListener('click', () => {
+            generateAndDisplayQRCode();
+        });
 
-    // UUID v4 generator
-    function generateToken() {
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-        const r = Math.random() * 16 | 0,
-              v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-      });
-    }
-  </script>
+        // Generate QR immediately on page load
+        window.onload = () => {
+            generateAndDisplayQRCode();
+        };
+
+        async function generateAndDisplayQRCode() {
+            // Clear previous states
+            clearInterval(countdownInterval);
+            qrcodeDiv.innerHTML = '';
+            messageDiv.textContent = '';
+            timerDiv.textContent = '';
+
+            // Show loading state
+            messageDiv.textContent = 'Generating QR code... Please wait.';
+            messageDiv.style.color = '#007bff'; // Blue for loading
+            generateBtn.disabled = true;
+
+            const uid = getUidFromUrl();
+
+            // Generate token (UUID v4 style)
+            const token = generateToken();
+
+            // Setup Firestore token data with 1 min expiry
+            const createdAt = new Date();
+            const expiresAt = new Date(createdAt.getTime() + 1 * 60 * 1000); // +1 min
+
+            const tokenData = {
+                token,
+                userId: uid,
+                createdAt: firebase.firestore.Timestamp.fromDate(createdAt),
+                expiresAt: firebase.firestore.Timestamp.fromDate(expiresAt),
+            };
+
+            try {
+                // Attempt to save token to Firestore
+                await firestore.collection('valid_tokens').doc(token).set(tokenData);
+
+                // Generate QR code canvas
+                QRCode.toCanvas(token, { width: 250 }, (error, canvas) => {
+                    if (error) {
+                        messageDiv.textContent = 'Error displaying QR code. Please try again.';
+                        messageDiv.style.color = '#dc3545';
+                        console.error('QR Code canvas generation error:', error);
+                        generateBtn.disabled = false; // Re-enable button
+                        return;
+                    }
+                    qrcodeDiv.appendChild(canvas);
+                    messageDiv.textContent = 'QR Code generated successfully!';
+                    messageDiv.style.color = '#28a745'; // Green for success
+                    startCountdown(60); // 60 seconds countdown
+                    generateBtn.disabled = false; // Re-enable button
+                });
+            } catch (err) {
+                messageDiv.textContent = `Error saving token to database: ${err.message}. Please check your connection or try again.`;
+                messageDiv.style.color = '#dc3545';
+                console.error('Firestore save error:', err);
+                generateBtn.disabled = false; // Re-enable button
+            }
+        }
+
+        function startCountdown(seconds) {
+            let remaining = seconds;
+            updateTimerDisplay(remaining);
+            countdownInterval = setInterval(() => {
+                remaining--;
+                if (remaining <= 0) {
+                    clearInterval(countdownInterval);
+                    timerDiv.textContent = 'Expired';
+                    qrcodeDiv.innerHTML = ''; // Clear the QR code
+                    messageDiv.textContent = 'QR Code expired. Generate a new one.';
+                    messageDiv.style.color = '#dc3545';
+                    generateBtn.disabled = false; // Ensure button is enabled to generate new
+                    return;
+                }
+                updateTimerDisplay(remaining);
+            }, 1000);
+        }
+
+        function updateTimerDisplay(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            const displaySecs = secs.toString().padStart(2, '0');
+            timerDiv.textContent = `Expires in ${mins}:${displaySecs}`;
+
+            // Change timer color based on remaining time
+            if (seconds <= 10) {
+                timerDiv.style.color = '#dc3545'; // Red
+            } else if (seconds <= 30) {
+                timerDiv.style.color = '#ffc107'; // Yellow/Orange
+            } else {
+                timerDiv.style.color = '#000000'; // Black
+            }
+        }
+
+        // UUID v4 generator
+        function generateToken() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                const r = Math.random() * 16 | 0,
+                      v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+    </script>
 </body>
 </html>
