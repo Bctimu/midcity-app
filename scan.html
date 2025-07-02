@@ -72,20 +72,18 @@
 
     <script>
         // Global variables from Canvas environment (mocked for direct HTML execution)
-        const __app_id = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const __firebase_config = typeof __firebase_config !== 'undefined' ? __firebase_config : JSON.stringify({
-            apiKey: "YOUR_API_KEY", // Replace with your actual Firebase API Key
-            authDomain: "your-project-id.firebaseapp.com",
-            projectId: "your-project-id",
-            storageBucket: "your-project-id.appspot.com",
-            messagingSenderId: "your-messaging-sender-id",
-            appId: "your-app-id",
-            measurementId: "your-measurement-id"
-        });
-        const __initial_auth_token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        const appId = __app_id;
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // Access global variables directly from the window object to avoid ReferenceError
+        const appId = window.__app_id || 'default-app-id';
+        const firebaseConfig = window.__firebase_config ? JSON.parse(window.__firebase_config) : JSON.parse(JSON.stringify({
+            apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
+            authDomain: "admin-17c3d.firebaseapp.com",
+            projectId: "admin-17c3d",
+            storageBucket: "admin-17c3d.appspot.com",
+            messagingSenderId: "456331474186",
+            appId: "1:456331474186:web:0385a740d37862f82af6f3",
+            measurementId: "G-DTP30VXLN7"
+        }));
+        const initialAuthToken = window.__initial_auth_token || null;
 
         // DOM Elements
         const merchantIdEl = document.getElementById('merchant-id');
@@ -144,8 +142,8 @@
                         startQrScanner();
                     } else {
                         try {
-                            if (__initial_auth_token) {
-                                await auth.signInWithCustomToken(__initial_auth_token);
+                            if (initialAuthToken) {
+                                await auth.signInWithCustomToken(initialAuthToken);
                                 console.log("Signed in with custom token.");
                             } else {
                                 await auth.signInAnonymously();
