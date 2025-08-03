@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Generated QR Code</title>
+
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
+  
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+
+  <style>
+    body { font-family: Arial, sans-serif; padding: 2rem; text-align: center; }
+    #qrcode { margin-top: 20px; }
+    button { font-size: 1rem; padding: 0.5rem 1rem; margin-top: 1rem; cursor: pointer; }
+    #message { margin-top: 10px; font-weight: bold; }
+    #timer { font-size: 1.5rem; margin-top: 10px; color: #000000; }
+  </style>
+</head>
+<body>
+  <h1>Generated QR Code</h1>
+  <button id="generateBtn" disabled>Generate QR Code</button>
+  <div id="qrcode"></div>
+  <div id="timer"></div>
+  <div id="message">Please wait, checking user status...</div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, doc, setDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
+      authDomain: "admin-17c3d.firebaseapp.com",
+      projectId: "admin-17c3d",
+      storageBucket: "admin-17c3d.appspot.com",
+      messagingSenderId: "456331474186",
+      appId: "1:456331474186:web:0385a740d37862f82af6f3",
+      measurementId: "G-DTP30VXLN7"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const generateBtn = document.getElementById('generateBtn');
+    const qrcodeDiv = document.getElementById('qrcode');
+    const messageDiv = document.getElementById('message');
+    const timerDiv = document.getElementById('timer');
+    let countdownInterval = null;
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        // User is signed in. Enable button and display status.
+        messageDiv.textContent = "Welcome, resident! Click to generate your QR code.";
+        generateBtn.disabled = false;
+        generateAndDisplayQRCode(user.uid);
+      } else {
+        // User is signed out. Redirect to a login/signup page.
+        messageDiv.textContent = "Please log in to generate a QR code.";
+        generateBtn.style.display = 'none';
+        // window.location.href = "login.html"; // Uncomment and create this page
+      }
+    });
+
+    generateBtn.addEventListener('click', () => {
+      if (auth.currentUser) {
+        generateAndDisplayQRCode(auth.currentUser.uid);
+      }
+    });
+
+    async function generateAndDisplayQRCode(uid) {
+      clearInterval(countdownInterval);
+      qrcodeDiv.innerHTML = '';
+      messageDiv.textContent = 'Generating QR code...';
+      timerDiv.textContent = '';
+
+      const token = crypto.randomUUID(); // Use modern, built-in UUID v4
+      const createdAt = new Date();
+      const expiresAt = new Date(createdAt.getTime() + 1 * 60 * 1000); // +1 min
+      const tokenData = {
+        token,
+        userId: uid,
+        createdAt: Timestamp.fromDate(createdAt),
+        expiresAt: Timestamp.fromDate(expiresAt),
+      };
+
+      try {
+        await setDoc(doc(db, 'valid_tokens', token), tokenData);
+        QRCode.toCanvas(token, { width: 250 }, (error, canvas) => {
+          if (error) {
+            messageDiv.textContent = 'Error generating QR code.';
+            console.error(error);
+            return;
+          }
+          qrcodeDiv.appendChild(canvas);
+          messageDiv.textContent = 'Scan this QR code to receive a discount!';
+          startCountdown(60); // 60 seconds countdown
+        });
+      } catch (err) {
+        messageDiv.textContent = 'Error saving token to database.';
+        console.error(err);
+      }
+    }
+
+    function startCountdown(seconds) {
+      let remaining = seconds;
+      updateTimerDisplay(remaining);
+      countdownInterval = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          clearInterval(countdownInterval);
+          timerDiv.textContent = 'Expired';
+          qrcodeDiv.innerHTML = '';
+          messageDiv.textContent = 'QR Code expired. Generate a new one.';
+          return;
+        }
+        updateTimerDisplay(remaining);
+      }, 1000);
+    }
+    
+    function updateTimerDisplay(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      timerDiv.textContent = `Expires in ${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+  </script>
+</body>
+</html>
