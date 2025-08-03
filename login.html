@@ -9,6 +9,7 @@
     <!-- Modular Firebase SDKs -->
     <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
     <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
 
@@ -40,13 +41,12 @@
                 Don't have an account? Sign Up
             </button>
         </div>
-
     </div>
 
     <script type="module">
-        // Import the necessary Firebase functions
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // Your Firebase configuration
         const firebaseConfig = {
@@ -62,6 +62,7 @@
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
+        const db = getFirestore(app);
 
         // Get form elements
         const form = document.getElementById('login-form');
@@ -77,24 +78,29 @@
 
         // Listen for form submission
         form.addEventListener('submit', async (e) => {
-            e.preventDefault(); // Prevent default form submission
-            errorMessage.textContent = ''; // Clear previous errors
+            e.preventDefault();
+            errorMessage.textContent = '';
             
             const email = emailInput.value;
             const password = passwordInput.value;
 
             try {
                 if (isSignUpMode) {
-                    // Create a new user with email and password
-                    await createUserWithEmailAndPassword(auth, email, password);
-                    console.log("User signed up successfully.");
+                    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                    const user = userCredential.user;
+                    
+                    // Add user data to Firestore
+                    await setDoc(doc(db, "users", user.uid), {
+                        email: user.email,
+                        createdAt: new Date(),
+                        // Add more fields here as needed, like businessName, role, etc.
+                    });
+                    console.log("User signed up and data saved to Firestore.");
                 } else {
-                    // Sign in with existing email and password
                     await signInWithEmailAndPassword(auth, email, password);
                     console.log("User signed in successfully.");
                 }
             } catch (error) {
-                // Display a user-friendly error message
                 let message = 'An unknown error occurred.';
                 switch (error.code) {
                     case 'auth/invalid-email':
@@ -136,11 +142,9 @@
         // Redirect on successful authentication
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                // A user is signed in, redirect them to a protected page
                 window.location.href = "scan.html";
             }
         });
-
     </script>
 </body>
 </html>
