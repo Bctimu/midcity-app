@@ -45,7 +45,7 @@
         
         Html5Qrcode.getCameras().then(cameras => {
           if (cameras.length) {
-            const cameraId = cameras[0].id;
+            const cameraId = cameras[1].id;
             reader.start(cameraId, { fps: 10, qrbox: 250 }, (decodedText) => onScanSuccess(decodedText, uid));
           } else {
             console.error("No cameras found.");
@@ -99,3 +99,4 @@
   </script>
 </body>
 </html>
+
