@@ -17,6 +17,11 @@
         <h1 id="form-title" class="text-3xl font-bold text-center mb-6 text-gray-800">Merchant Login</h1>
         
         <form id="login-form" class="space-y-6">
+            <div id="business-name-group" class="hidden">
+                <label for="business-name" class="block text-sm font-medium text-gray-700">Business Name</label>
+                <input type="text" id="business-name" name="business-name" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+            </div>
+
             <div>
                 <label for="email" class="block text-sm font-medium text-gray-700">Email address</label>
                 <input type="email" id="email" name="email" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
@@ -68,6 +73,8 @@
         const form = document.getElementById('login-form');
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
+        const businessNameInput = document.getElementById('business-name');
+        const businessNameGroup = document.getElementById('business-name-group');
         const errorMessage = document.getElementById('error-message');
         const formTitle = document.getElementById('form-title');
         const submitBtn = document.getElementById('submit-btn');
@@ -86,39 +93,65 @@
 
             try {
                 if (isSignUpMode) {
-                    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-                    const user = userCredential.user;
+                    const businessName = businessNameInput.value;
+                    if (businessNameInput.required && !businessName) {
+                        errorMessage.textContent = 'Please enter a business name.';
+                        return;
+                    }
+
+                    // Try to create a new user
+                    await createUserWithEmailAndPassword(auth, email, password);
+                    const user = auth.currentUser;
                     
                     // Add user data to Firestore
                     await setDoc(doc(db, "users", user.uid), {
                         email: user.email,
                         createdAt: new Date(),
-                        // Add more fields here as needed, like businessName, role, etc.
+                        businessName: businessName,
+                        isResident: false, // Merchants are not residents
+                        // Add more fields here as needed
                     });
                     console.log("User signed up and data saved to Firestore.");
                 } else {
+                    // Try to sign in the user
                     await signInWithEmailAndPassword(auth, email, password);
                     console.log("User signed in successfully.");
                 }
             } catch (error) {
                 let message = 'An unknown error occurred.';
-                switch (error.code) {
-                    case 'auth/invalid-email':
-                        message = 'Invalid email address.';
-                        break;
-                    case 'auth/user-not-found':
-                    case 'auth/wrong-password':
-                        message = 'Invalid email or password.';
-                        break;
-                    case 'auth/email-already-in-use':
-                        message = 'An account with this email already exists.';
-                        break;
-                    case 'auth/weak-password':
-                        message = 'Password should be at least 6 characters.';
-                        break;
-                    default:
-                        message = error.message;
-                        break;
+                if (error.code === 'auth/email-already-in-use' && isSignUpMode) {
+                    // If signing up and email is already in use, automatically try to sign in
+                    try {
+                        await signInWithEmailAndPassword(auth, email, password);
+                        console.log("User signed in successfully after failed sign-up.");
+                        return;
+                    } catch (signInError) {
+                        // Handle sign-in errors
+                        message = 'An account with this email already exists, but the password was incorrect.';
+                        console.error(signInError);
+                    }
+                } else {
+                    switch (error.code) {
+                        case 'auth/invalid-email':
+                            message = 'Invalid email address.';
+                            break;
+                        case 'auth/user-not-found':
+                        case 'auth/wrong-password':
+                            message = 'Invalid email or password.';
+                            break;
+                        case 'auth/email-already-in-use':
+                            message = 'An account with this email already exists.';
+                            break;
+                        case 'auth/weak-password':
+                            message = 'Password should be at least 6 characters.';
+                            break;
+                        case 'auth/operation-not-allowed':
+                            message = 'This authentication method is not enabled. Please check your Firebase project settings.';
+                            break;
+                        default:
+                            message = error.message;
+                            break;
+                    }
                 }
                 errorMessage.textContent = message;
                 console.error(error);
@@ -132,17 +165,22 @@
                 formTitle.textContent = 'Merchant Sign Up';
                 submitBtn.textContent = 'Sign Up';
                 toggleFormBtn.textContent = 'Already have an account? Sign In';
+                businessNameGroup.classList.remove('hidden');
+                businessNameInput.required = true;
             } else {
                 formTitle.textContent = 'Merchant Login';
                 submitBtn.textContent = 'Sign In';
                 toggleFormBtn.textContent = "Don't have an account? Sign Up";
+                businessNameGroup.classList.add('hidden');
+                businessNameInput.required = false;
             }
         });
 
         // Redirect on successful authentication
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                window.location.href = "scan.html";
+                // Use window.location.href with a full URL for a more robust redirect
+                window.location.href = window.location.origin + '/scan.html';
             }
         });
     </script>
