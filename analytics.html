@@ -4,13 +4,36 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Analytics</title>
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
+
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+    th { background-color: #f2f2f2; }
+    button { padding: 0.5rem 1rem; margin-bottom: 1rem; cursor: pointer; }
+    #statusMessage { font-style: italic; color: #555; }
+  </style>
+</head>
+<body>
+  <h1 id="pageTitle">QR Scan Analytics</h1>
+  <button id="downloadBtn">💾 Download CSV</button>
+  <p id="statusMessage"></p>
+  <table>
+    <thead>
+      <tr><th>Scanned By</th><th>Scanned Token</th><th>Scanned At</th></tr>
+    </thead>
+    <tbody id="scanTableBody">
+      </tbody>
+  </table>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import {
-      getFirestore, collection, query, where, onSnapshot
-    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getFirestore, collection, query, where, onSnapshot, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-    // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -23,75 +46,71 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-
-    // Grab UID from URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const uid = urlParams.get('uid');
+    const auth = getAuth(app);
 
     const tableBody = document.getElementById("scanTableBody");
     const downloadBtn = document.getElementById("downloadBtn");
     const statusMessage = document.getElementById("statusMessage");
     let scanDataList = [];
 
-    // Check if UID is present. If not, show an error.
-    if (!uid) {
-      statusMessage.textContent = "Error: User ID (uid) not found in the URL. Please provide a valid UID.";
-      downloadBtn.disabled = true;
-    } else {
-      // Show loading message while data is being fetched
-      statusMessage.textContent = "Loading scan data...";
-      downloadBtn.disabled = true;
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const uid = user.uid;
+        statusMessage.textContent = "Loading scan data...";
+        downloadBtn.disabled = true;
 
-      // NOTE: Your previous rules referred to 'qrScans', but your code uses 'scans'.
-      // I am using 'scans' to match the code, but be mindful of this potential mismatch.
-      const scansRef = collection(db, "scans");
+        const scansRef = collection(db, "scans");
+        let q;
 
-      // Set up the query based on UID
-      const q = uid === "midcity"
-        ? query(scansRef)
-        : query(scansRef, where("scannedBy", "==", uid));
+        const midcityAdminDoc = await getDoc(doc(db, "midcityAdmins", uid));
+        const isAdmin = midcityAdminDoc.exists();
 
-      // Use a more efficient onSnapshot listener
-      onSnapshot(q, (querySnapshot) => {
-        scanDataList = []; // Reset for new data
-        tableBody.innerHTML = ''; // Clear existing rows
-
-        if (querySnapshot.empty) {
-          statusMessage.textContent = "No scan data found.";
-          downloadBtn.disabled = true;
-          return;
+        if (isAdmin) {
+          document.getElementById("pageTitle").textContent = "MidCity Admin Analytics";
+          q = query(scansRef);
+        } else {
+          q = query(scansRef, where("scannedBy", "==", uid));
         }
 
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          const scannedAtDate = data.scannedAt?.toDate();
-          const scannedAtLocale = scannedAtDate?.toLocaleString() || 'N/A';
+        onSnapshot(q, (querySnapshot) => {
+          scanDataList = [];
+          tableBody.innerHTML = '';
 
-          scanDataList.push({
-            scannedBy: data.scannedBy,
-            scannedToken: data.scannedToken,
-            scannedAt: scannedAtDate?.toISOString() || 'N/A'
+          if (querySnapshot.empty) {
+            statusMessage.textContent = "No scan data found.";
+            downloadBtn.disabled = true;
+            return;
+          }
+
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            const scannedAtDate = data.scannedAt?.toDate();
+            const scannedAtLocale = scannedAtDate?.toLocaleString() || 'N/A';
+
+            scanDataList.push({
+              scannedBy: data.scannedBy,
+              scannedToken: data.scannedToken,
+              scannedAt: scannedAtDate?.toISOString() || 'N/A'
+            });
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td>${data.scannedBy}</td>
+              <td>${data.scannedToken}</td>
+              <td>${scannedAtLocale}</td>
+            `;
+            tableBody.appendChild(row);
           });
 
-          // Create and append a new row
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td>${data.scannedBy}</td>
-            <td>${data.scannedToken}</td>
-            <td>${scannedAtLocale}</td>
-          `;
-          tableBody.appendChild(row);
+          statusMessage.textContent = `Found ${scanDataList.length} scans.`;
+          downloadBtn.disabled = false;
         });
+      } else {
+        window.location.href = "login.html";
+      }
+    });
 
-        // Update status and enable button
-        statusMessage.textContent = `Found ${scanDataList.length} scans.`;
-        downloadBtn.disabled = false;
-      });
-    }
-
-    // Download CSV
     downloadBtn.addEventListener("click", () => {
-      // Basic CSV field escaping to handle commas within data
       const escapeCsvField = (field) => `"${String(field).replace(/"/g, '""')}"`;
       
       const csvContent = "data:text/csv;charset=utf-8," +
@@ -109,26 +128,5 @@
       document.body.removeChild(link);
     });
   </script>
-
-  <style>
-    body { font-family: sans-serif; padding: 2rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
-    th { background-color: #f2f2f2; }
-    button { padding: 0.5rem 1rem; margin-bottom: 1rem; cursor: pointer; }
-    #statusMessage { font-style: italic; color: #555; }
-  </style>
-</head>
-<body>
-  <h1>QR Scan Analytics</h1>
-  <button id="downloadBtn">💾 Download CSV</button>
-  <p id="statusMessage"></p>
-  <table>
-    <thead>
-      <tr><th>Scanned By</th><th>Scanned Token</th><th>Scanned At</th></tr>
-    </thead>
-    <tbody id="scanTableBody">
-      </tbody>
-  </table>
 </body>
 </html>
