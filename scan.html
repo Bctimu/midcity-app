@@ -3,6 +3,9 @@
 <head>
   <title>QR Scanner</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
+  <!-- Use Tailwind CSS for a clean, mobile-first design -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Modular Firebase SDKs -->
   <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
   <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
   <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
@@ -12,16 +15,27 @@
     #result { margin-top: 20px; font-size: 1.2rem; font-weight: bold; }
   </style>
 </head>
-<body>
-  <h1>Business QR Scanner</h1>
-  <div id="reader"></div>
-  <div id="result">Please log in to use the scanner.</div>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen relative">
+  <h1 class="text-3xl font-bold mb-4 text-gray-800">Business QR Scanner</h1>
+  <div id="reader" class="bg-white p-4 rounded-lg shadow-md"></div>
+  <div id="result" class="mt-4 text-gray-700">Please wait, checking user status...</div>
+  
+  <!-- New Switch Camera Button -->
+  <button id="camera-btn" class="mt-4 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+    Switch Camera
+  </button>
+
+  <!-- Logout Button -->
+  <button id="logout-btn" class="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+    Log Out
+  </button>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getFirestore, doc, getDoc, collection, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
+    // Firebase configuration
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -37,35 +51,60 @@
     const auth = getAuth(app);
 
     const reader = new Html5Qrcode("reader");
+    const logoutBtn = document.getElementById('logout-btn');
+    const resultDiv = document.getElementById('result');
+    const cameraBtn = document.getElementById('camera-btn');
+    let isAuthChecked = false;
+    let cameras = [];
+    let currentCameraIndex = 0;
 
-    onAuthStateChanged(auth, (user) => {
+    // Authentication state listener
+    onAuthStateChanged(auth, async (user) => {
       if (user) {
+        // User is signed in. Proceed with scanner logic.
         const uid = user.uid;
-        document.getElementById("result").textContent = "Scanner ready.";
+        resultDiv.textContent = "Please grant camera permissions to start the scanner.";
+        logoutBtn.classList.remove('hidden');
         
-        Html5Qrcode.getCameras().then(cameras => {
+        try {
+          cameras = await Html5Qrcode.getCameras();
+          if (cameras.length > 1) {
+            cameraBtn.classList.remove('hidden');
+            cameraBtn.textContent = `Switch to Camera ${currentCameraIndex + 2}`;
+          }
+
           if (cameras.length) {
-            const cameraId = cameras[1].id;
+            const cameraId = cameras[currentCameraIndex].id;
             reader.start(cameraId, { fps: 10, qrbox: 250 }, (decodedText) => onScanSuccess(decodedText, uid));
           } else {
             console.error("No cameras found.");
-            document.getElementById("result").textContent = "Error: No cameras found.";
+            resultDiv.textContent = "Error: No cameras found.";
           }
-        }).catch(err => console.error(err));
+        } catch (err) {
+            console.error(err);
+            resultDiv.textContent = "Error: Could not access camera. Please make sure you grant camera permissions and try again.";
+        }
       } else {
-        window.location.href = "login.html"; // You need to create this page.
+        // Only redirect if the initial check is complete and no user is found.
+        if (isAuthChecked) {
+          resultDiv.textContent = "Please log in to use the scanner.";
+          logoutBtn.classList.add('hidden');
+          window.location.href = window.location.origin + "/login.html";
+        }
       }
+      isAuthChecked = true;
     });
 
+    // Function to handle successful QR code scans
     async function onScanSuccess(decodedText, uid) {
-      document.getElementById("result").textContent = "Checking QR code...";
+      resultDiv.textContent = "Checking QR code...";
       reader.pause();
 
       const docRef = doc(db, "valid_tokens", decodedText);
       const docSnap = await getDoc(docRef);
 
       if (!docSnap.exists()) {
-        document.getElementById("result").textContent = "Invalid token.";
+        resultDiv.textContent = "Invalid token.";
         reader.resume();
         return;
       }
@@ -74,7 +113,7 @@
       const now = new Date();
 
       if (data.expiresAt.toDate() < now) {
-        document.getElementById("result").textContent = "Token expired.";
+        resultDiv.textContent = "Token expired.";
         reader.resume();
         return;
       }
@@ -88,15 +127,36 @@
           originalUserId: data.userId,
           createdAt: data.createdAt,
         });
-        document.getElementById("result").textContent = "Scan logged!";
+        resultDiv.textContent = "Scan logged!";
         setTimeout(() => reader.resume(), 1500);
       } catch (err) {
-        document.getElementById("result").textContent = "Error logging scan.";
+        resultDiv.textContent = "Error logging scan.";
         console.error(err);
         reader.resume();
       }
     }
+
+    // Switch camera button event listener
+    cameraBtn.addEventListener('click', async () => {
+        if (reader.isScanning) {
+            await reader.stop();
+        }
+        currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
+        const newCameraId = cameras[currentCameraIndex].id;
+        const newCameraText = `Switch to Camera ${(currentCameraIndex + 2) > cameras.length ? 1 : currentCameraIndex + 2}`;
+        cameraBtn.textContent = newCameraText;
+        await reader.start(newCameraId, { fps: 10, qrbox: 250 }, (decodedText) => onScanSuccess(decodedText, auth.currentUser.uid));
+    });
+
+    // Logout button event listener
+    logoutBtn.addEventListener('click', async () => {
+      try {
+        await signOut(auth);
+        // The onAuthStateChanged listener will handle the redirect.
+      } catch (error) {
+        console.error("Error signing out: ", error);
+      }
+    });
   </script>
 </body>
 </html>
-
