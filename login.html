@@ -46,6 +46,13 @@
                 Don't have an account? Sign Up
             </button>
         </div>
+        
+        <div id="redirect-message" class="hidden text-center mt-4">
+            <p class="text-green-600">Login successful!</p>
+            <a href="scan.html" class="mt-2 inline-block px-4 py-2 bg-green-500 text-white rounded-md shadow hover:bg-green-600">
+                Go to Scanner
+            </a>
+        </div>
     </div>
 
     <script type="module">
@@ -79,6 +86,7 @@
         const formTitle = document.getElementById('form-title');
         const submitBtn = document.getElementById('submit-btn');
         const toggleFormBtn = document.getElementById('toggle-form-btn');
+        const redirectMessage = document.getElementById('redirect-message');
 
         // State to track if we're in 'Sign In' or 'Sign Up' mode
         let isSignUpMode = false;
@@ -176,11 +184,12 @@
             }
         });
 
-        // Redirect on successful authentication
+        // On successful authentication, hide the form and show a message with a link
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                // Use window.location.href with a full URL for a more robust redirect
-                window.location.href = window.location.origin + '/scan.html';
+                form.classList.add('hidden');
+                toggleFormBtn.classList.add('hidden');
+                redirectMessage.classList.remove('hidden');
             }
         });
     </script>
