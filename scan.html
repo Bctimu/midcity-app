@@ -3,10 +3,11 @@
 <head>
   <title>QR Scanner</title>
   <script src="https://unpkg.com/html5-qrcode"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
+    body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
     #reader { width: 300px; margin: auto; }
     #result { margin-top: 20px; font-size: 1.2rem; font-weight: bold; }
   </style>
@@ -14,10 +15,12 @@
 <body>
   <h1>Business QR Scanner</h1>
   <div id="reader"></div>
-  <div id="result">Waiting for scan...</div>
+  <div id="result">Please log in to use the scanner.</div>
 
-  <script>
-    const uid = new URLSearchParams(window.location.search).get("uid");
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, doc, getDoc, collection, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
@@ -29,53 +32,70 @@
       measurementId: "G-DTP30VXLN7"
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
 
     const reader = new Html5Qrcode("reader");
 
-    function onScanSuccess(decodedText) {
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const uid = user.uid;
+        document.getElementById("result").textContent = "Scanner ready.";
+        
+        Html5Qrcode.getCameras().then(cameras => {
+          if (cameras.length) {
+            const cameraId = cameras[0].id;
+            reader.start(cameraId, { fps: 10, qrbox: 250 }, (decodedText) => onScanSuccess(decodedText, uid));
+          } else {
+            console.error("No cameras found.");
+            document.getElementById("result").textContent = "Error: No cameras found.";
+          }
+        }).catch(err => console.error(err));
+      } else {
+        window.location.href = "login.html"; // You need to create this page.
+      }
+    });
+
+    async function onScanSuccess(decodedText, uid) {
       document.getElementById("result").textContent = "Checking QR code...";
       reader.pause();
 
-      db.collection("valid_tokens").doc(decodedText).get().then(doc => {
-        if (!doc.exists) {
-          document.getElementById("result").textContent = "Invalid token.";
-          reader.resume();
-          return;
-        }
+      const docRef = doc(db, "valid_tokens", decodedText);
+      const docSnap = await getDoc(docRef);
 
-        const data = doc.data();
-        const now = new Date();
+      if (!docSnap.exists()) {
+        document.getElementById("result").textContent = "Invalid token.";
+        reader.resume();
+        return;
+      }
 
-        if (data.expiresAt.toDate() < now) {
-          document.getElementById("result").textContent = "Token expired.";
-          reader.resume();
-          return;
-        }
+      const data = docSnap.data();
+      const now = new Date();
 
-        db.collection("qrScans").add({
+      if (data.expiresAt.toDate() < now) {
+        document.getElementById("result").textContent = "Token expired.";
+        reader.resume();
+        return;
+      }
+
+      const scansCollection = collection(db, "scans");
+      try {
+        await addDoc(scansCollection, {
           token: decodedText,
-          scannedAt: firebase.firestore.Timestamp.now(),
+          scannedAt: Timestamp.now(),
           scannedBy: uid,
           originalUserId: data.userId,
           createdAt: data.createdAt,
-        }).then(() => {
-          document.getElementById("result").textContent = "Scan logged!";
-          setTimeout(() => reader.resume(), 1500);
-        }).catch(err => {
-          document.getElementById("result").textContent = "Error logging scan.";
-          console.error(err);
-          reader.resume();
         });
-      });
-    }
-
-    Html5Qrcode.getCameras().then(cameras => {
-      if (cameras.length) {
-        reader.start(cameras[1].id, { fps: 10, qrbox: 250 }, onScanSuccess);
+        document.getElementById("result").textContent = "Scan logged!";
+        setTimeout(() => reader.resume(), 1500);
+      } catch (err) {
+        document.getElementById("result").textContent = "Error logging scan.";
+        console.error(err);
+        reader.resume();
       }
-    }).catch(err => console.error(err));
+    }
   </script>
 </body>
 </html>
