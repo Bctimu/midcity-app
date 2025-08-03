@@ -2,24 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Analytics</title>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import {
-      getFirestore, collection, query, where, onSnapshot, getDocs
+      getFirestore, collection, query, where, onSnapshot
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     // Firebase config
-    const firebaseConfig = {
-      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
-      authDomain: "admin-17c3d.firebaseapp.com",
-      projectId: "admin-17c3d",
-      storageBucket: "admin-17c3d.appspot.com",
-      messagingSenderId: "456331474186",
-      appId: "1:456331474186:web:0385a740d37862f82af6f3",
-      measurementId: "G-DTP30VXLN7"
-    };
+    const firebaseConfig = {
+      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
+      authDomain: "admin-17c3d.firebaseapp.com",
+      projectId: "admin-17c3d",
+      storageBucket: "admin-17c3d.appspot.com",
+      messagingSenderId: "456331474186",
+      appId: "1:456331474186:web:0385a740d37862f82af6f3",
+      measurementId: "G-DTP30VXLN7"
+    };
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -28,61 +28,76 @@
     const urlParams = new URLSearchParams(window.location.search);
     const uid = urlParams.get('uid');
 
-    // Reference to the collection
-    const scansRef = collection(db, "scans");
-
-    // Set up the query based on UID
-    let q;
-    if (uid === "midcity") {
-      q = query(scansRef);
-    } else {
-      q = query(scansRef, where("scannedBy", "==", uid));
-    }
-
-    const table = document.getElementById("scanTable");
+    const tableBody = document.getElementById("scanTableBody");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const statusMessage = document.getElementById("statusMessage");
     let scanDataList = [];
 
-    onSnapshot(q, (querySnapshot) => {
-      scanDataList = []; // Reset
-      table.innerHTML = `
-        <tr>
-          <th>Scanned By</th>
-          <th>Scanned Token</th>
-          <th>Scanned At</th>
-        </tr>
-      `;
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        const scannedAt = data.scannedAt?.toDate().toLocaleString() || 'N/A';
+    // Check if UID is present. If not, show an error.
+    if (!uid) {
+      statusMessage.textContent = "Error: User ID (uid) not found in the URL. Please provide a valid UID.";
+      downloadBtn.disabled = true;
+    } else {
+      // Show loading message while data is being fetched
+      statusMessage.textContent = "Loading scan data...";
+      downloadBtn.disabled = true;
 
-        scanDataList.push({
-          scannedBy: data.scannedBy,
-          scannedToken: data.scannedToken,
-          scannedAt: data.scannedAt?.toDate().toISOString() || 'N/A'
-        });
+      // NOTE: Your previous rules referred to 'qrScans', but your code uses 'scans'.
+      // I am using 'scans' to match the code, but be mindful of this potential mismatch.
+      const scansRef = collection(db, "scans");
 
-        const row = `
-          <tr>
+      // Set up the query based on UID
+      const q = uid === "midcity"
+        ? query(scansRef)
+        : query(scansRef, where("scannedBy", "==", uid));
+
+      // Use a more efficient onSnapshot listener
+      onSnapshot(q, (querySnapshot) => {
+        scanDataList = []; // Reset for new data
+        tableBody.innerHTML = ''; // Clear existing rows
+
+        if (querySnapshot.empty) {
+          statusMessage.textContent = "No scan data found.";
+          downloadBtn.disabled = true;
+          return;
+        }
+
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          const scannedAtDate = data.scannedAt?.toDate();
+          const scannedAtLocale = scannedAtDate?.toLocaleString() || 'N/A';
+
+          scanDataList.push({
+            scannedBy: data.scannedBy,
+            scannedToken: data.scannedToken,
+            scannedAt: scannedAtDate?.toISOString() || 'N/A'
+          });
+
+          // Create and append a new row
+          const row = document.createElement('tr');
+          row.innerHTML = `
             <td>${data.scannedBy}</td>
             <td>${data.scannedToken}</td>
-            <td>${scannedAt}</td>
-          </tr>
-        `;
-        table.innerHTML += row;
+            <td>${scannedAtLocale}</td>
+          `;
+          tableBody.appendChild(row);
+        });
+
+        // Update status and enable button
+        statusMessage.textContent = `Found ${scanDataList.length} scans.`;
+        downloadBtn.disabled = false;
       });
-    });
+    }
 
     // Download CSV
-    document.getElementById("downloadBtn").addEventListener("click", () => {
-      if (scanDataList.length === 0) {
-        alert("No data to download!");
-        return;
-      }
-
+    downloadBtn.addEventListener("click", () => {
+      // Basic CSV field escaping to handle commas within data
+      const escapeCsvField = (field) => `"${String(field).replace(/"/g, '""')}"`;
+      
       const csvContent = "data:text/csv;charset=utf-8," +
         ["scannedBy,scannedToken,scannedAt"]
           .concat(scanDataList.map(d =>
-            `${d.scannedBy},${d.scannedToken},${d.scannedAt}`
+            `${escapeCsvField(d.scannedBy)},${escapeCsvField(d.scannedToken)},${escapeCsvField(d.scannedAt)}`
           )).join("\n");
 
       const encodedUri = encodeURI(csvContent);
@@ -101,14 +116,19 @@
     th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
     th { background-color: #f2f2f2; }
     button { padding: 0.5rem 1rem; margin-bottom: 1rem; cursor: pointer; }
+    #statusMessage { font-style: italic; color: #555; }
   </style>
 </head>
 <body>
   <h1>QR Scan Analytics</h1>
   <button id="downloadBtn">💾 Download CSV</button>
-  <table id="scanTable">
-    <tr><th>Scanned By</th><th>Scanned Token</th><th>Scanned At</th></tr>
+  <p id="statusMessage"></p>
+  <table>
+    <thead>
+      <tr><th>Scanned By</th><th>Scanned Token</th><th>Scanned At</th></tr>
+    </thead>
+    <tbody id="scanTableBody">
+      </tbody>
   </table>
 </body>
 </html>
-
