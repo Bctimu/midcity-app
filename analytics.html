@@ -31,7 +31,7 @@
     <div class="w-full overflow-x-auto">
       <table class="bg-white rounded-lg shadow-md">
           <thead>
-            <tr><th>Scanned By</th><th>Scanned Token</th><th>Scanned At</th></tr>
+            <tr><th>Scanned By (Business Name)</th><th>Resident Name</th><th>Scanned Token</th><th>Scanned At</th></tr>
           </thead>
           <tbody id="scanTableBody">
           </tbody>
@@ -39,9 +39,9 @@
     </div>
   </div>
 
-  <div id="auth-status" class="mt-4 text-gray-700">You must be logged in to view analytics.</div>
+  <div id="auth-status" class="mt-4 text-gray-700">Please wait, checking user status...</div>
 
-  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200">
+  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
     Go to Login
   </button>
   
@@ -99,7 +99,7 @@
           q = query(scansRef, where("scannedBy", "==", uid));
         }
 
-        onSnapshot(q, (querySnapshot) => {
+        onSnapshot(q, async (querySnapshot) => {
           scanDataList = [];
           tableBody.innerHTML = '';
 
@@ -109,20 +109,45 @@
             return;
           }
 
+          // Fetch all unique user IDs from the scans to get their names
+          const userIds = new Set();
+          querySnapshot.forEach(doc => {
+            userIds.add(doc.data().scannedBy);
+            userIds.add(doc.data().originalUserId);
+          });
+          
+          let usersMap = {};
+          if (userIds.size > 0) {
+              const usersRef = collection(db, "users");
+              const userQuery = query(usersRef, where("__name__", "in", Array.from(userIds)));
+              const userDocs = await getDocs(userQuery);
+              userDocs.forEach(userDoc => {
+                  usersMap[userDoc.id] = userDoc.data();
+              });
+          }
+
           querySnapshot.forEach((doc) => {
             const data = doc.data();
             const scannedAtDate = data.scannedAt?.toDate();
             const scannedAtLocale = scannedAtDate?.toLocaleString() || 'N/A';
-
+            
+            // Get names from the users map
+            const scannedByUser = usersMap[data.scannedBy];
+            const originalUser = usersMap[data.originalUserId];
+            const scannedByName = scannedByUser ? (scannedByUser.businessName || scannedByUser.fullName || scannedByUser.email) : 'N/A';
+            const residentName = originalUser ? originalUser.fullName : 'N/A';
+            
             scanDataList.push({
-              scannedBy: data.scannedBy,
+              scannedBy: scannedByName,
+              residentName: residentName,
               scannedToken: data.token,
               scannedAt: scannedAtDate?.toISOString() || 'N/A'
             });
 
             const row = document.createElement('tr');
             row.innerHTML = `
-              <td>${data.scannedBy}</td>
+              <td>${scannedByName}</td>
+              <td>${residentName}</td>
               <td>${data.token}</td>
               <td>${scannedAtLocale}</td>
             `;
@@ -161,9 +186,9 @@
       const escapeCsvField = (field) => `"${String(field).replace(/"/g, '""')}"`;
       
       const csvContent = "data:text/csv;charset=utf-8," +
-        ["scannedBy,scannedToken,scannedAt"]
+        ["scannedBy,residentName,scannedToken,scannedAt"]
           .concat(scanDataList.map(d =>
-            `${escapeCsvField(d.scannedBy)},${escapeCsvField(d.scannedToken)},${escapeCsvField(d.scannedAt)}`
+            `${escapeCsvField(d.scannedBy)},${escapeCsvField(d.residentName)},${escapeCsvField(d.scannedToken)},${escapeCsvField(d.scannedAt)}`
           )).join("\n");
 
       const encodedUri = encodeURI(csvContent);
