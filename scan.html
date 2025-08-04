@@ -17,12 +17,18 @@
 </head>
 <body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen relative">
   <h1 class="text-3xl font-bold mb-4 text-gray-800">Business QR Scanner</h1>
-  <div id="reader" class="bg-white p-4 rounded-lg shadow-md"></div>
-  <div id="result" class="mt-4 text-gray-700">Please wait, checking user status...</div>
   
-  <!-- New Switch Camera Button -->
-  <button id="camera-btn" class="mt-4 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
-    Switch Camera
+  <div id="content-container" class="flex flex-col items-center hidden">
+    <div id="reader" class="bg-white p-4 rounded-lg shadow-md"></div>
+    <button id="camera-btn" class="mt-4 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+      Switch Camera
+    </button>
+  </div>
+
+  <div id="auth-status" class="mt-4 text-gray-700">Please wait, checking user status...</div>
+  
+  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+    Go to Login
   </button>
 
   <!-- Logout Button -->
@@ -35,7 +41,8 @@
     import { getFirestore, doc, getDoc, collection, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-    // Firebase configuration
+    const TESTING_MODE = true;
+
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -52,74 +59,95 @@
 
     const reader = new Html5Qrcode("reader");
     const logoutBtn = document.getElementById('logout-btn');
-    const resultDiv = document.getElementById('result');
+    const authStatusDiv = document.getElementById('auth-status');
     const cameraBtn = document.getElementById('camera-btn');
+    const loginRedirectBtn = document.getElementById('login-redirect-btn');
+    const contentContainer = document.getElementById('content-container');
     let isAuthChecked = false;
     let cameras = [];
     let currentCameraIndex = 0;
-    
-    // Flag to check if scanner is initialized
     let isScannerStarted = false;
 
-
-    // Authentication state listener
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        // User is signed in. Proceed with scanner logic.
-        const uid = user.uid;
-        logoutBtn.classList.remove('hidden');
-
-        if (!isScannerStarted) {
-            resultDiv.textContent = "Please grant camera permissions to start the scanner.";
-            try {
-              cameras = await Html5Qrcode.getCameras();
-              if (cameras.length > 1) {
-                cameraBtn.classList.remove('hidden');
-                cameraBtn.textContent = `Switch to Camera ${currentCameraIndex + 2}`;
-              }
-              if (cameras.length) {
-                const cameraId = cameras[currentCameraIndex].id;
-                reader.start(cameraId, { fps: 10, qrbox: 250 }, (decodedText) => onScanSuccess(decodedText, uid));
-                isScannerStarted = true;
-              } else {
-                console.error("No cameras found.");
-                resultDiv.textContent = "Error: No cameras found.";
-              }
-            } catch (err) {
-                console.error(err);
-                resultDiv.textContent = "Error: Could not access camera. Please make sure you grant camera permissions and try again.";
-            }
-        }
-      } else {
-        // Only redirect if the initial check is complete and no user is found.
-        if (isAuthChecked) {
-          resultDiv.textContent = "Please log in to use the scanner.";
-          logoutBtn.classList.add('hidden');
-          if (reader.isScanning) {
-              reader.stop();
+    const startScanner = (uid) => {
+      authStatusDiv.textContent = "Please grant camera permissions to start the scanner.";
+      try {
+        Html5Qrcode.getCameras().then(availableCameras => {
+          cameras = availableCameras;
+          if (cameras.length > 1) {
+            cameraBtn.classList.remove('hidden');
+            cameraBtn.textContent = `Switch to Camera ${currentCameraIndex + 2}`;
           }
-          window.location.href = window.location.origin + "/login.html";
-        }
+
+          if (cameras.length) {
+            const cameraId = cameras[currentCameraIndex].id;
+            reader.start(cameraId, { fps: 10, qrbox: 250 }, (decodedText) => onScanSuccess(decodedText, uid));
+            isScannerStarted = true;
+          } else {
+            console.error("No cameras found.");
+            authStatusDiv.textContent = "Error: No cameras found.";
+          }
+        }).catch(err => {
+          console.error(err);
+          authStatusDiv.textContent = "Error: Could not access camera. Please make sure you grant camera permissions and try again.";
+        });
+      } catch (err) {
+        console.error("Error starting scanner: ", err);
+        authStatusDiv.textContent = "An error occurred while starting the scanner.";
       }
-      isAuthChecked = true;
+    };
+
+    if (TESTING_MODE) {
+      const uid = "TESTING-UID";
+      authStatusDiv.textContent = "Testing mode is ON. Scanner is starting...";
+      logoutBtn.classList.add('hidden');
+      loginRedirectBtn.classList.add('hidden');
+      contentContainer.classList.remove('hidden');
+      startScanner(uid);
+    } else {
+      onAuthStateChanged(auth, (user) => {
+        if (user) {
+          const uid = user.uid;
+          authStatusDiv.textContent = "Authentication successful. Starting scanner...";
+          logoutBtn.classList.remove('hidden');
+          loginRedirectBtn.classList.add('hidden');
+          contentContainer.classList.remove('hidden');
+          if (!isScannerStarted) {
+            startScanner(uid);
+          }
+        } else {
+          if (isAuthChecked) {
+            authStatusDiv.textContent = "You must be logged in to use the scanner.";
+            logoutBtn.classList.add('hidden');
+            contentContainer.classList.add('hidden');
+            loginRedirectBtn.classList.remove('hidden');
+            if (reader.isScanning) {
+              reader.stop().catch(err => console.error("Error stopping scanner: ", err));
+            }
+          }
+        }
+        isAuthChecked = true;
+      });
+    }
+
+    loginRedirectBtn.addEventListener('click', () => {
+      window.location.href = window.location.origin + "/login.html";
     });
 
-    // Function to handle successful QR code scans
     async function onScanSuccess(decodedText, uid) {
-      resultDiv.textContent = "Checking QR code...";
+      authStatusDiv.textContent = "Checking QR code...";
       reader.pause();
       
       if (!uid) {
-          resultDiv.textContent = "Authentication error. Please log out and log back in.";
-          reader.resume();
-          return;
+        authStatusDiv.textContent = "Authentication error. Please log out and log back in.";
+        reader.resume();
+        return;
       }
       
       const docRef = doc(db, "valid_tokens", decodedText);
       const docSnap = await getDoc(docRef);
 
       if (!docSnap.exists()) {
-        resultDiv.textContent = "Invalid token.";
+        authStatusDiv.textContent = "Invalid token.";
         reader.resume();
         return;
       }
@@ -128,7 +156,7 @@
       const now = new Date();
 
       if (data.expiresAt.toDate() < now) {
-        resultDiv.textContent = "Token expired.";
+        authStatusDiv.textContent = "Token expired.";
         reader.resume();
         return;
       }
@@ -142,32 +170,29 @@
           originalUserId: data.userId,
           createdAt: data.createdAt,
         });
-        resultDiv.textContent = "Scan logged!";
+        authStatusDiv.textContent = "Scan logged!";
         setTimeout(() => reader.resume(), 1500);
       } catch (err) {
-        resultDiv.textContent = "Error logging scan. Please check your Firestore security rules.";
+        authStatusDiv.textContent = "Error logging scan. Please check your Firestore security rules.";
         console.error(err);
         reader.resume();
       }
     }
 
-    // Switch camera button event listener
     cameraBtn.addEventListener('click', async () => {
-        if (reader.isScanning) {
-            await reader.stop();
-        }
-        currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
-        const newCameraId = cameras[currentCameraIndex].id;
-        const newCameraText = `Switch to Camera ${(currentCameraIndex + 2) > cameras.length ? 1 : currentCameraIndex + 2}`;
-        cameraBtn.textContent = newCameraText;
-        await reader.start(newCameraId, { fps: 10, qrbox: 250 }, (decodedText) => onScanSuccess(decodedText, auth.currentUser.uid));
+      if (reader.isScanning) {
+        await reader.stop();
+      }
+      currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
+      const newCameraId = cameras[currentCameraIndex].id;
+      const newCameraText = `Switch to Camera ${(currentCameraIndex + 2) > cameras.length ? 1 : currentCameraIndex + 2}`;
+      cameraBtn.textContent = newCameraText;
+      await reader.start(newCameraId, { fps: 10, qrbox: 250 }, (decodedText) => onScanSuccess(decodedText, auth.currentUser.uid));
     });
 
-    // Logout button event listener
     logoutBtn.addEventListener('click', async () => {
       try {
         await signOut(auth);
-        // The onAuthStateChanged listener will handle the redirect.
       } catch (error) {
         console.error("Error signing out: ", error);
       }
