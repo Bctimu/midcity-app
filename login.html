@@ -3,37 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Merchant City</title>
-    <!-- Use Tailwind CSS for a clean, mobile-first design -->
+    <title>Login - MidCity App</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Modular Firebase SDKs -->
     <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
     <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
     <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
+    <style>
+        .hidden { display: none !important; }
+    </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen">
 
     <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-        <h1 id="form-title" class="text-3xl font-bold text-center mb-6 text-gray-800">Merchant Login</h1>
-        
-        <form id="login-form" class="space-y-6">
+        <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">Welcome to MidCity App</h1>
+
+        <div id="role-selection" class="flex flex-col space-y-4">
+            <button id="merchant-btn" class="w-full py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-md shadow-md transition-colors">
+                Merchant Login
+            </button>
+            <button id="resident-btn" class="w-full py-3 px-6 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md shadow-md transition-colors">
+                Resident Login
+            </button>
+        </div>
+
+        <form id="login-form" class="space-y-6 hidden">
+            <h2 id="form-title" class="text-2xl font-bold text-center mb-4 text-gray-800"></h2>
+
+            <div id="full-name-group" class="hidden">
+                <label for="full-name" class="block text-sm font-medium text-gray-700">Full Name</label>
+                <input type="text" id="full-name" name="full-name" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm">
+            </div>
+
             <div id="business-name-group" class="hidden">
                 <label for="business-name" class="block text-sm font-medium text-gray-700">Business Name</label>
-                <input type="text" id="business-name" name="business-name" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <input type="text" id="business-name" name="business-name" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm">
             </div>
 
             <div>
                 <label for="email" class="block text-sm font-medium text-gray-700">Email address</label>
-                <input type="email" id="email" name="email" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <input type="email" id="email" name="email" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm">
             </div>
             
             <div>
                 <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
-                <input type="password" id="password" name="password" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <input type="password" id="password" name="password" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm">
             </div>
             
             <div>
-                <button type="submit" id="submit-btn" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                <button type="submit" id="submit-btn" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
                     Sign In
                 </button>
             </div>
@@ -41,26 +58,26 @@
 
         <p id="error-message" class="mt-4 text-center text-sm text-red-600"></p>
 
-        <div class="mt-6 text-center">
+        <div id="form-toggle" class="mt-6 text-center hidden">
             <button id="toggle-form-btn" class="text-sm font-medium text-blue-600 hover:text-blue-500">
                 Don't have an account? Sign Up
             </button>
         </div>
         
-        <div id="redirect-message" class="hidden text-center mt-4">
-            <p class="text-green-600">Login successful!</p>
-            <a href="scan.html" class="mt-2 inline-block px-4 py-2 bg-green-500 text-white rounded-md shadow hover:bg-green-600">
-                Go to Scanner
-            </a>
+        <div id="back-button-container" class="mt-6 text-center hidden">
+             <button id="back-btn" class="text-sm font-medium text-gray-600 hover:text-gray-500">
+                ← Back to role selection
+            </button>
         </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-        // Your Firebase configuration
+        const BASE_URL = "https://bctimu.github.io/midcity-app";
+
         const firebaseConfig = {
             apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
             authDomain: "admin-17c3d.firebaseapp.com",
@@ -71,28 +88,72 @@
             measurementId: "G-DTP30VXLN7"
         };
 
-        // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Get form elements
-        const form = document.getElementById('login-form');
+        const roleSelectionDiv = document.getElementById('role-selection');
+        const loginForm = document.getElementById('login-form');
+        const formTitle = document.getElementById('form-title');
+        const merchantBtn = document.getElementById('merchant-btn');
+        const residentBtn = document.getElementById('resident-btn');
+        const backBtn = document.getElementById('back-btn');
+        const formToggleDiv = document.getElementById('form-toggle');
+        const backButtonContainer = document.getElementById('back-button-container');
+
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
+        const fullNameInput = document.getElementById('full-name');
+        const fullNameGroup = document.getElementById('full-name-group');
         const businessNameInput = document.getElementById('business-name');
         const businessNameGroup = document.getElementById('business-name-group');
-        const errorMessage = document.getElementById('error-message');
-        const formTitle = document.getElementById('form-title');
         const submitBtn = document.getElementById('submit-btn');
         const toggleFormBtn = document.getElementById('toggle-form-btn');
-        const redirectMessage = document.getElementById('redirect-message');
+        const errorMessage = document.getElementById('error-message');
 
-        // State to track if we're in 'Sign In' or 'Sign Up' mode
         let isSignUpMode = false;
+        let userRole = null;
 
-        // Listen for form submission
-        form.addEventListener('submit', async (e) => {
+        // Role selection
+        merchantBtn.addEventListener('click', () => {
+            userRole = 'merchant';
+            showForm('Merchant Login');
+        });
+
+        residentBtn.addEventListener('click', () => {
+            userRole = 'resident';
+            showForm('Resident Login');
+        });
+        
+        backBtn.addEventListener('click', () => {
+            showRoleSelection();
+        });
+
+        function showForm(title) {
+            roleSelectionDiv.classList.add('hidden');
+            loginForm.classList.remove('hidden');
+            formToggleDiv.classList.remove('hidden');
+            backButtonContainer.classList.remove('hidden');
+            formTitle.textContent = title;
+            isSignUpMode = false;
+            toggleFormBtn.textContent = "Don't have an account? Sign Up";
+            submitBtn.textContent = "Sign In";
+        }
+        
+        function showRoleSelection() {
+             roleSelectionDiv.classList.remove('hidden');
+             loginForm.classList.add('hidden');
+             formToggleDiv.classList.add('hidden');
+             backButtonContainer.classList.add('hidden');
+             userRole = null;
+             emailInput.value = '';
+             passwordInput.value = '';
+             fullNameInput.value = '';
+             businessNameInput.value = '';
+             errorMessage.textContent = '';
+        }
+
+        loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             errorMessage.textContent = '';
             
@@ -101,64 +162,55 @@
 
             try {
                 if (isSignUpMode) {
-                    const businessName = businessNameInput.value;
-                    if (businessNameInput.required && !businessName) {
+                    const businessName = userRole === 'merchant' ? businessNameInput.value : '';
+                    const fullName = userRole === 'resident' ? fullNameInput.value : '';
+
+                    if (userRole === 'merchant' && !businessName) {
                         errorMessage.textContent = 'Please enter a business name.';
                         return;
                     }
 
-                    // Try to create a new user
-                    await createUserWithEmailAndPassword(auth, email, password);
-                    const user = auth.currentUser;
+                    if (userRole === 'resident' && !fullName) {
+                        errorMessage.textContent = 'Please enter your full name.';
+                        return;
+                    }
+
+                    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                    const user = userCredential.user;
                     
-                    // Add user data to Firestore
                     await setDoc(doc(db, "users", user.uid), {
                         email: user.email,
                         createdAt: new Date(),
+                        fullName: fullName,
                         businessName: businessName,
-                        isResident: false, // Merchants are not residents
-                        // Add more fields here as needed
+                        isResident: userRole === 'resident',
+                        role: userRole
                     });
                     console.log("User signed up and data saved to Firestore.");
                 } else {
-                    // Try to sign in the user
                     await signInWithEmailAndPassword(auth, email, password);
                     console.log("User signed in successfully.");
                 }
             } catch (error) {
                 let message = 'An unknown error occurred.';
                 if (error.code === 'auth/email-already-in-use' && isSignUpMode) {
-                    // If signing up and email is already in use, automatically try to sign in
                     try {
                         await signInWithEmailAndPassword(auth, email, password);
                         console.log("User signed in successfully after failed sign-up.");
                         return;
                     } catch (signInError) {
-                        // Handle sign-in errors
                         message = 'An account with this email already exists, but the password was incorrect.';
                         console.error(signInError);
                     }
                 } else {
                     switch (error.code) {
-                        case 'auth/invalid-email':
-                            message = 'Invalid email address.';
-                            break;
+                        case 'auth/invalid-email': message = 'Invalid email address.'; break;
                         case 'auth/user-not-found':
-                        case 'auth/wrong-password':
-                            message = 'Invalid email or password.';
-                            break;
-                        case 'auth/email-already-in-use':
-                            message = 'An account with this email already exists.';
-                            break;
-                        case 'auth/weak-password':
-                            message = 'Password should be at least 6 characters.';
-                            break;
-                        case 'auth/operation-not-allowed':
-                            message = 'This authentication method is not enabled. Please check your Firebase project settings.';
-                            break;
-                        default:
-                            message = error.message;
-                            break;
+                        case 'auth/wrong-password': message = 'Invalid email or password.'; break;
+                        case 'auth/email-already-in-use': message = 'An account with this email already exists.'; break;
+                        case 'auth/weak-password': message = 'Password should be at least 6 characters.'; break;
+                        case 'auth/operation-not-allowed': message = 'This authentication method is not enabled. Please check your Firebase project settings.'; break;
+                        default: message = error.message; break;
                     }
                 }
                 errorMessage.textContent = message;
@@ -166,32 +218,61 @@
             }
         });
 
-        // Listen for form mode toggle
         toggleFormBtn.addEventListener('click', () => {
             isSignUpMode = !isSignUpMode;
             if (isSignUpMode) {
-                formTitle.textContent = 'Merchant Sign Up';
+                formTitle.textContent = `${userRole.charAt(0).toUpperCase() + userRole.slice(1)} Sign Up`;
                 submitBtn.textContent = 'Sign Up';
                 toggleFormBtn.textContent = 'Already have an account? Sign In';
-                businessNameGroup.classList.remove('hidden');
-                businessNameInput.required = true;
+
+                if (userRole === 'merchant') {
+                    businessNameGroup.classList.remove('hidden');
+                    businessNameInput.required = true;
+                    fullNameGroup.classList.add('hidden');
+                    fullNameInput.required = false;
+                } else if (userRole === 'resident') {
+                    fullNameGroup.classList.remove('hidden');
+                    fullNameInput.required = true;
+                    businessNameGroup.classList.add('hidden');
+                    businessNameInput.required = false;
+                }
             } else {
-                formTitle.textContent = 'Merchant Login';
+                formTitle.textContent = `${userRole.charAt(0).toUpperCase() + userRole.slice(1)} Login`;
                 submitBtn.textContent = 'Sign In';
                 toggleFormBtn.textContent = "Don't have an account? Sign Up";
+
                 businessNameGroup.classList.add('hidden');
                 businessNameInput.required = false;
+                fullNameGroup.classList.add('hidden');
+                fullNameInput.required = false;
             }
         });
 
-        // On successful authentication, hide the form and show a message with a link
-        onAuthStateChanged(auth, (user) => {
+        onAuthStateChanged(auth, async (user) => {
             if (user) {
-                form.classList.add('hidden');
-                toggleFormBtn.classList.add('hidden');
-                redirectMessage.classList.remove('hidden');
+                try {
+                    const userDocRef = doc(db, 'users', user.uid);
+                    const userDoc = await getDoc(userDocRef);
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        if (userData.role === 'merchant') {
+                            window.location.href = `${BASE_URL}/scan.html`;
+                        } else if (userData.role === 'resident') {
+                            window.location.href = `${BASE_URL}/index.html`;
+                        }
+                    } else {
+                         window.location.href = `${BASE_URL}/login.html`;
+                    }
+                } catch (error) {
+                    console.error("Error fetching user role: ", error);
+                    window.location.href = `${BASE_URL}/login.html`;
+                }
+            } else {
+                // If no user is logged in, show the role selection screen
+                showRoleSelection();
             }
         });
+
     </script>
 </body>
 </html>
