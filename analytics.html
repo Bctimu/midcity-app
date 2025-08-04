@@ -1,303 +1,224 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - MidCity App</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
-    <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
-    <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
-    <style>
-        .hidden { display: none !important; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analytics</title>
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
+  <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+    th { background-color: #f2f2f2; }
+    button { padding: 0.5rem 1rem; margin-bottom: 1rem; cursor: pointer; }
+    #statusMessage { font-style: italic; color: #555; }
+  </style>
 </head>
-<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen">
+<body class="bg-gray-100 flex flex-col items-center min-h-screen relative">
+  <h1 id="pageTitle" class="text-3xl font-bold mb-4 text-gray-800">QR Scan Analytics</h1>
 
-    <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-        <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">Welcome to MidCity App</h1>
-
-        <div id="role-selection" class="flex flex-col space-y-4">
-            <button id="merchant-btn" class="w-full py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-md shadow-md transition-colors">
-                Merchant Login
-            </button>
-            <button id="resident-btn" class="w-full py-3 px-6 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md shadow-md transition-colors">
-                Resident Login
-            </button>
-        </div>
-
-        <form id="login-form" class="space-y-6 hidden">
-            <h2 id="form-title" class="text-2xl font-bold text-center mb-4 text-gray-800"></h2>
-
-            <div id="full-name-group" class="hidden">
-                <label for="full-name" class="block text-sm font-medium text-gray-700">Full Name</label>
-                <input type="text" id="full-name" name="full-name" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm">
-            </div>
-
-            <div id="business-name-group" class="hidden">
-                <label for="business-name" class="block text-sm font-medium text-gray-700">Business Name</label>
-                <input type="text" id="business-name" name="business-name" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm">
-            </div>
-
-            <div>
-                <label for="email" class="block text-sm font-medium text-gray-700">Email address</label>
-                <input type="email" id="email" name="email" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm">
-            </div>
-            
-            <div>
-                <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
-                <input type="password" id="password" name="password" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm">
-            </div>
-            
-            <div>
-                <button type="submit" id="submit-btn" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                    Sign In
-                </button>
-            </div>
-        </form>
-
-        <p id="error-message" class="mt-4 text-center text-sm text-red-600"></p>
-
-        <div id="form-toggle" class="mt-6 text-center hidden">
-            <button id="toggle-form-btn" class="text-sm font-medium text-blue-600 hover:text-blue-500">
-                Don't have an account? Sign Up
-            </button>
-        </div>
-        
-        <div id="back-button-container" class="mt-6 text-center hidden">
-             <button id="back-btn" class="text-sm font-medium text-gray-600 hover:text-gray-500">
-                ← Back to role selection
-            </button>
-        </div>
-
-        <!-- New post-login navigation for merchants/admins -->
-        <div id="post-login-nav" class="hidden mt-6 text-center">
-            <p class="text-lg font-semibold text-green-600 mb-4">Login Successful!</p>
-            <div class="flex flex-col space-y-3">
-                <a href="https://bctimu.github.io/midcity-app/scan.html" class="py-2 px-4 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">Go to Scanner</a>
-                <a href="https://bctimu.github.io/midcity-app/analytics.html" class="py-2 px-4 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 transition-colors">Go to Analytics</a>
-            </div>
-        </div>
+  <div id="content-container" class="flex flex-col items-center w-full max-w-4xl hidden">
+    <div class="flex space-x-4 mb-4">
+      <button id="downloadBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200">
+          💾 Download CSV
+      </button>
     </div>
+    <p id="statusMessage" class="text-gray-700">Please wait, checking user status...</p>
+    <p id="statusMessage" class="text-gray-700">Loading scan data...</p>
+    <div class="w-full overflow-x-auto">
+      <table class="bg-white rounded-lg shadow-md">
+          <thead>
+            <tr><th>Scanned By (Business Name)</th><th>Resident Name</th><th>Scanned Token</th><th>Scanned At</th></tr>
+          </thead>
+          <tbody id="scanTableBody">
+          </tbody>
+      </table>
+    </div>
+  </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  <div id="auth-status" class="mt-4 text-gray-700">Please wait, checking user status...</div>
+  <!-- Initial state for unauthenticated users -->
+  <div id="auth-status" class="mt-4 text-gray-700">You must be logged in to view analytics.</div>
 
-        const BASE_URL = "https://bctimu.github.io/midcity-app";
+  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200">
+    Go to Login
+  </button>
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
-            authDomain: "admin-17c3d.firebaseapp.com",
-            projectId: "admin-17c3d",
-            storageBucket: "admin-17c3d.appspot.com",
-            messagingSenderId: "456331474186",
-            appId: "1:456331474186:web:0385a740d37862f82af6f3",
-            measurementId: "G-DTP30VXLN7"
-        };
+  <!-- Logout Button -->
+  <button id="logout-btn" class="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+    Log Out
+  </button>
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, collection, query, where, onSnapshot, getDoc, doc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-        const roleSelectionDiv = document.getElementById('role-selection');
-        const loginForm = document.getElementById('login-form');
-        const formTitle = document.getElementById('form-title');
-        const merchantBtn = document.getElementById('merchant-btn');
-        const residentBtn = document.getElementById('resident-btn');
-        const backBtn = document.getElementById('back-btn');
-        const formToggleDiv = document.getElementById('form-toggle');
-        const backButtonContainer = document.getElementById('back-button-container');
+    const BASE_URL = "https://bctimu.github.io/midcity-app";
 
-        const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
-        const fullNameInput = document.getElementById('full-name');
-        const fullNameGroup = document.getElementById('full-name-group');
-        const businessNameInput = document.getElementById('business-name');
-        const businessNameGroup = document.getElementById('business-name-group');
-        const submitBtn = document.getElementById('submit-btn');
-        const toggleFormBtn = document.getElementById('toggle-form-btn');
-        const errorMessage = document.getElementById('error-message');
-        const postLoginNav = document.getElementById('post-login-nav');
+    const firebaseConfig = {
+      apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
+      authDomain: "admin-17c3d.firebaseapp.com",
+      projectId: "admin-17c3d",
+      storageBucket: "admin-17c3d.appspot.com",
+      messagingSenderId: "456331474186",
+      appId: "1:456331474186:web:0385a740d37862f82af6f3",
+      measurementId: "G-DTP30VXLN7"
+    };
 
-        let isSignUpMode = false;
-        let userRole = null;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
 
-        // Role selection
-        merchantBtn.addEventListener('click', () => {
-            userRole = 'merchant';
-            showForm('Merchant Login');
-        });
+    const tableBody = document.getElementById("scanTableBody");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const statusMessage = document.getElementById("statusMessage");
+    const logoutBtn = document.getElementById('logout-btn');
+    const authStatusDiv = document.getElementById('auth-status');
+    const loginRedirectBtn = document.getElementById('login-redirect-btn');
+    const contentContainer = document.getElementById('content-container');
+    let scanDataList = [];
+    let isAuthChecked = false;
 
-        residentBtn.addEventListener('click', () => {
-            userRole = 'resident';
-            showForm('Resident Login');
-        });
-        
-        backBtn.addEventListener('click', () => {
-            showRoleSelection();
-        });
+    async function fetchAnalyticsData(uid) {
+        statusMessage.textContent = "Loading scan data...";
+        downloadBtn.disabled = true;
 
-        function showForm(title) {
-            roleSelectionDiv.classList.add('hidden');
-            loginForm.classList.remove('hidden');
-            formToggleDiv.classList.remove('hidden');
-            backButtonContainer.classList.remove('hidden');
-            formTitle.textContent = title;
-            isSignUpMode = false;
-            toggleFormBtn.textContent = "Don't have an account? Sign Up";
-            submitBtn.textContent = "Sign In";
+        const scansRef = collection(db, "scans");
+        let q;
 
-            // Hide all specific fields first
-            businessNameGroup.classList.add('hidden');
-            businessNameInput.required = false;
-            fullNameGroup.classList.add('hidden');
-            fullNameInput.required = false;
-        }
-        
-        function showRoleSelection() {
-             roleSelectionDiv.classList.remove('hidden');
-             loginForm.classList.add('hidden');
-             formToggleDiv.classList.add('hidden');
-             backButtonContainer.classList.add('hidden');
-             postLoginNav.classList.add('hidden'); // Ensure post-login nav is hidden
-             userRole = null;
-             emailInput.value = '';
-             passwordInput.value = '';
-             fullNameInput.value = '';
-             businessNameInput.value = '';
-             errorMessage.textContent = '';
+        let isAdmin = false;
+        const midcityAdminDoc = await getDoc(doc(db, "midcityAdmins", uid));
+        isAdmin = midcityAdminDoc.exists();
+
+        if (isAdmin) {
+          document.getElementById("pageTitle").textContent = "MidCity Admin Analytics";
+          q = query(scansRef);
+        } else {
+          q = query(scansRef, where("scannedBy", "==", uid));
         }
 
-        loginForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            errorMessage.textContent = '';
-            
-            const email = emailInput.value;
-            const password = passwordInput.value;
+        onSnapshot(q, async (querySnapshot) => {
+          scanDataList = [];
+          tableBody.innerHTML = '';
 
-            try {
-                if (isSignUpMode) {
-                    const businessName = userRole === 'merchant' ? businessNameInput.value : '';
-                    const fullName = userRole === 'resident' ? fullNameInput.value : '';
+          if (querySnapshot.empty) {
+            statusMessage.textContent = "No scan data found.";
+            downloadBtn.disabled = true;
+            return;
+          }
 
-                    if (userRole === 'merchant' && !businessName) {
-                        errorMessage.textContent = 'Please enter a business name.';
-                        return;
-                    }
+          // Fetch all unique user IDs from the scans to get their names
+          const userIds = new Set();
+          querySnapshot.forEach(doc => {
+            userIds.add(doc.data().scannedBy);
+            userIds.add(doc.data().originalUserId);
+          });
 
-                    if (userRole === 'resident' && !fullName) {
-                        errorMessage.textContent = 'Please enter your full name.';
-                        return;
-                    }
+          let usersMap = {};
+          if (userIds.size > 0) {
+              const usersRef = collection(db, "users");
+              const userQuery = query(usersRef, where("__name__", "in", Array.from(userIds)));
+              const userDocs = await getDocs(userQuery);
+              userDocs.forEach(userDoc => {
+                  usersMap[userDoc.id] = userDoc.data();
+              });
+          }
 
-                    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-                    const user = userCredential.user;
-                    
-                    await setDoc(doc(db, "users", user.uid), {
-                        email: user.email,
-                        createdAt: new Date(),
-                        fullName: fullName,
-                        businessName: businessName,
-                        isResident: userRole === 'resident',
-                        role: userRole
-                    });
-                    console.log("User signed up and data saved to Firestore.");
-                } else {
-                    await signInWithEmailAndPassword(auth, email, password);
-                    console.log("User signed in successfully.");
-                }
-            } catch (error) {
-                let message = 'An unknown error occurred.';
-                if (error.code === 'auth/email-already-in-use' && isSignUpMode) {
-                    try {
-                        await signInWithEmailAndPassword(auth, email, password);
-                        console.log("User signed in successfully after failed sign-up.");
-                        return;
-                    } catch (signInError) {
-                        message = 'An account with this email already exists, but the password was incorrect.';
-                        console.error(signInError);
-                    }
-                } else {
-                    switch (error.code) {
-                        case 'auth/invalid-email': message = 'Invalid email address.'; break;
-                        case 'auth/user-not-found':
-                        case 'auth/wrong-password': message = 'Invalid email or password.'; break;
-                        case 'auth/email-already-in-use': message = 'An account with this email already exists.'; break;
-                        case 'auth/weak-password': message = 'Password should be at least 6 characters.'; break;
-                        case 'auth/operation-not-allowed': message = 'This authentication method is not enabled. Please check your Firebase project settings.'; break;
-                        default: message = error.message; break;
-                    }
-                }
-                errorMessage.textContent = message;
-                console.error(error);
-            }
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            const scannedAtDate = data.scannedAt?.toDate();
+            const scannedAtLocale = scannedAtDate?.toLocaleString() || 'N/A';
+
+            // Get names from the users map
+            const scannedByUser = usersMap[data.scannedBy];
+            const originalUser = usersMap[data.originalUserId];
+            const scannedByName = scannedByUser ? (scannedByUser.businessName || scannedByUser.fullName || scannedByUser.email) : 'N/A';
+            const residentName = originalUser ? originalUser.fullName : 'N/A';
+
+            scanDataList.push({
+              scannedBy: scannedByName,
+              residentName: residentName,
+              scannedToken: data.token,
+              scannedAt: scannedAtDate?.toISOString() || 'N/A'
+            });
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td>${scannedByName}</td>
+              <td>${residentName}</td>
+              <td>${data.token}</td>
+              <td>${scannedAtLocale}</td>
+            `;
+            tableBody.appendChild(row);
+          });
+
+          statusMessage.textContent = `Found ${scanDataList.length} scans.`;
+          downloadBtn.disabled = false;
         });
+    }
 
-        toggleFormBtn.addEventListener('click', () => {
-            isSignUpMode = !isSignUpMode;
-            if (isSignUpMode) {
-                formTitle.textContent = `${userRole.charAt(0).toUpperCase() + userRole.slice(1)} Sign Up`;
-                submitBtn.textContent = 'Sign Up';
-                toggleFormBtn.textContent = 'Already have an account? Sign In';
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // User is logged in: show content, hide login prompt
+        loginRedirectBtn.classList.add('hidden');
+        authStatusDiv.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+        contentContainer.classList.remove('hidden');
+        fetchAnalyticsData(user.uid);
+      } else {
+        if (isAuthChecked) {
+          authStatusDiv.textContent = "You must be logged in to view analytics.";
+          authStatusDiv.classList.remove('hidden');
+          logoutBtn.classList.add('hidden');
+          contentContainer.classList.add('hidden');
+          loginRedirectBtn.classList.remove('hidden');
+        }
+        // User is NOT logged in: show login prompt, hide content
+        authStatusDiv.textContent = "You must be logged in to view analytics.";
+        authStatusDiv.classList.remove('hidden');
+        loginRedirectBtn.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+        contentContainer.classList.add('hidden');
+      }
+      isAuthChecked = true;
+    });
 
-                if (userRole === 'merchant') {
-                    businessNameGroup.classList.remove('hidden');
-                    businessNameInput.required = true;
-                    fullNameGroup.classList.add('hidden');
-                    fullNameInput.required = false;
-                } else if (userRole === 'resident') {
-                    fullNameGroup.classList.remove('hidden');
-                    fullNameInput.required = true;
-                    businessNameGroup.classList.add('hidden');
-                    businessNameInput.required = false;
-                }
-            } else {
-                formTitle.textContent = `${userRole.charAt(0).toUpperCase() + userRole.slice(1)} Login`;
-                submitBtn.textContent = 'Sign In';
-                toggleFormBtn.textContent = "Don't have an account? Sign Up";
+    loginRedirectBtn.addEventListener('click', () => {
+      window.location.href = BASE_URL + "/login.html";
+    });
 
-                businessNameGroup.classList.add('hidden');
-                businessNameInput.required = false;
-                fullNameGroup.classList.add('hidden');
-                fullNameInput.required = false;
-            }
-        });
+    downloadBtn.addEventListener("click", () => {
+      const escapeCsvField = (field) => `"${String(field).replace(/"/g, '""')}"`;
 
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                try {
-                    const userDocRef = doc(db, 'users', user.uid);
-                    const userDoc = await getDoc(userDocRef);
-                    if (userDoc.exists()) {
-                        const userData = userDoc.data();
-                        if (userData.role === 'merchant' || userData.role === 'admin') {
-                            // For merchants/admins, show post-login navigation
-                            roleSelectionDiv.classList.add('hidden');
-                            loginForm.classList.add('hidden');
-                            formToggleDiv.classList.add('hidden');
-                            backButtonContainer.classList.add('hidden');
-                            postLoginNav.classList.remove('hidden');
-                        } else if (userData.role === 'resident') {
-                            // Residents redirect directly
-                            window.location.href = `${BASE_URL}/index.html`;
-                        }
-                    } else {
-                         // User exists in Auth but not in Firestore 'users' collection (shouldn't happen with new signup flow)
-                         // Force them to re-select role or handle as error
-                         showRoleSelection();
-                    }
-                } catch (error) {
-                    console.error("Error fetching user role: ", error);
-                    showRoleSelection(); // Fallback to role selection on error
-                }
-            } else {
-                // If no user is logged in, show the role selection screen
-                showRoleSelection();
-            }
-        });
+      const csvContent = "data:text/csv;charset=utf-8," +
+        ["scannedBy,residentName,scannedToken,scannedAt"]
+          .concat(scanDataList.map(d =>
+            `${escapeCsvField(d.scannedBy)},${escapeCsvField(d.residentName)},${escapeCsvField(d.scannedToken)},${escapeCsvField(d.scannedAt)}`
+          )).join("\n");
 
-    </script>
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `scan_data_${new Date().toISOString()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+      try {
+        await signOut(auth);
+      } catch (error) {
+        console.error("Error signing out: ", error);
+        alert('Could not log out. Please try again.');
+      }
+    });
+  </script>
 </body>
 </html>
