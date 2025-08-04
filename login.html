@@ -69,6 +69,15 @@
                 ← Back to role selection
             </button>
         </div>
+
+        <!-- New post-login navigation for merchants/admins -->
+        <div id="post-login-nav" class="hidden mt-6 text-center">
+            <p class="text-lg font-semibold text-green-600 mb-4">Login Successful!</p>
+            <div class="flex flex-col space-y-3">
+                <a href="https://bctimu.github.io/midcity-app/scan.html" class="py-2 px-4 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">Go to Scanner</a>
+                <a href="https://bctimu.github.io/midcity-app/analytics.html" class="py-2 px-4 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 transition-colors">Go to Analytics</a>
+            </div>
+        </div>
     </div>
 
     <script type="module">
@@ -110,6 +119,7 @@
         const submitBtn = document.getElementById('submit-btn');
         const toggleFormBtn = document.getElementById('toggle-form-btn');
         const errorMessage = document.getElementById('error-message');
+        const postLoginNav = document.getElementById('post-login-nav');
 
         let isSignUpMode = false;
         let userRole = null;
@@ -138,6 +148,12 @@
             isSignUpMode = false;
             toggleFormBtn.textContent = "Don't have an account? Sign Up";
             submitBtn.textContent = "Sign In";
+
+            // Hide all specific fields first
+            businessNameGroup.classList.add('hidden');
+            businessNameInput.required = false;
+            fullNameGroup.classList.add('hidden');
+            fullNameInput.required = false;
         }
         
         function showRoleSelection() {
@@ -145,6 +161,7 @@
              loginForm.classList.add('hidden');
              formToggleDiv.classList.add('hidden');
              backButtonContainer.classList.add('hidden');
+             postLoginNav.classList.add('hidden'); // Ensure post-login nav is hidden
              userRole = null;
              emailInput.value = '';
              passwordInput.value = '';
@@ -255,17 +272,25 @@
                     const userDoc = await getDoc(userDocRef);
                     if (userDoc.exists()) {
                         const userData = userDoc.data();
-                        if (userData.role === 'merchant') {
-                            window.location.href = `${BASE_URL}/scan.html`;
+                        if (userData.role === 'merchant' || userData.role === 'admin') {
+                            // For merchants/admins, show post-login navigation
+                            roleSelectionDiv.classList.add('hidden');
+                            loginForm.classList.add('hidden');
+                            formToggleDiv.classList.add('hidden');
+                            backButtonContainer.classList.add('hidden');
+                            postLoginNav.classList.remove('hidden');
                         } else if (userData.role === 'resident') {
+                            // Residents redirect directly
                             window.location.href = `${BASE_URL}/index.html`;
                         }
                     } else {
-                         window.location.href = `${BASE_URL}/login.html`;
+                         // User exists in Auth but not in Firestore 'users' collection (shouldn't happen with new signup flow)
+                         // Force them to re-select role or handle as error
+                         showRoleSelection();
                     }
                 } catch (error) {
                     console.error("Error fetching user role: ", error);
-                    window.location.href = `${BASE_URL}/login.html`;
+                    showRoleSelection(); // Fallback to role selection on error
                 }
             } else {
                 // If no user is logged in, show the role selection screen
