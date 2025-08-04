@@ -26,10 +26,20 @@
 </head>
 <body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen relative">
   <h1 class="text-3xl font-bold mb-4 text-gray-800">Generated QR Code</h1>
-  <button id="generateBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">Generate QR Code</button>
-  <div id="qrcode" class="p-4 bg-white rounded-lg shadow-md mt-6"></div>
-  <div id="timer" class="mt-4"></div>
-  <div id="message" class="mt-2 text-gray-700">Please wait, checking user status...</div>
+  
+  <div id="content-container" class="flex flex-col items-center">
+    <button id="generateBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+        Generate QR Code
+    </button>
+    <div id="qrcode" class="p-4 bg-white rounded-lg shadow-md mt-6"></div>
+    <div id="timer" class="mt-4"></div>
+  </div>
+  
+  <div id="auth-status" class="mt-2 text-gray-700">Please wait, checking user status...</div>
+
+  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+    Go to Login
+  </button>
 
   <!-- Logout Button -->
   <button id="logout-btn" class="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
@@ -56,29 +66,35 @@
     const auth = getAuth(app);
     const generateBtn = document.getElementById('generateBtn');
     const qrcodeDiv = document.getElementById('qrcode');
-    const messageDiv = document.getElementById('message');
+    const authStatusDiv = document.getElementById('auth-status');
     const timerDiv = document.getElementById('timer');
     const logoutBtn = document.getElementById('logout-btn');
+    const loginRedirectBtn = document.getElementById('login-redirect-btn');
+    const contentContainer = document.getElementById('content-container');
     let countdownInterval = null;
-    let isAuthChecked = false; // New state variable
+    let isAuthChecked = false;
 
-    // Authentication state listener
     onAuthStateChanged(auth, (user) => {
       if (user) {
-        // User is signed in. Update UI and enable buttons.
-        messageDiv.textContent = "Welcome, resident! Click the button below to generate your QR code.";
+        authStatusDiv.textContent = "Welcome, resident! Click the button below to generate your QR code.";
+        contentContainer.classList.remove('hidden');
         generateBtn.classList.remove('hidden');
         logoutBtn.classList.remove('hidden');
+        loginRedirectBtn.classList.add('hidden');
       } else {
-        // Only redirect if the initial check is complete and no user is found.
         if (isAuthChecked) {
-          messageDiv.textContent = "Please log in to generate a QR code.";
+          authStatusDiv.textContent = "Please log in to generate a QR code.";
+          contentContainer.classList.add('hidden');
           generateBtn.classList.add('hidden');
           logoutBtn.classList.add('hidden');
-          window.location.href = window.location.origin + "/login.html";
+          loginRedirectBtn.classList.remove('hidden');
         }
       }
-      isAuthChecked = true; // Mark the initial check as complete
+      isAuthChecked = true;
+    });
+    
+    loginRedirectBtn.addEventListener('click', () => {
+      window.location.href = window.location.origin + "/login.html";
     });
 
     generateBtn.addEventListener('click', () => {
@@ -87,24 +103,24 @@
       }
     });
 
-    // Logout button event listener
     logoutBtn.addEventListener('click', async () => {
       try {
         await signOut(auth);
       } catch (error) {
         console.error("Error signing out: ", error);
+        alert('Could not log out. Please try again.');
       }
     });
 
     async function generateAndDisplayQRCode(uid) {
       clearInterval(countdownInterval);
       qrcodeDiv.innerHTML = '';
-      messageDiv.textContent = 'Generating QR code...';
+      authStatusDiv.textContent = 'Generating QR code...';
       timerDiv.textContent = '';
 
       const token = crypto.randomUUID();
       const createdAt = new Date();
-      const expiresAt = new Date(createdAt.getTime() + 1 * 60 * 1000); // +1 min
+      const expiresAt = new Date(createdAt.getTime() + 1 * 60 * 1000);
       const tokenData = {
         token,
         userId: uid,
@@ -116,16 +132,16 @@
         await setDoc(doc(db, 'valid_tokens', token), tokenData);
         QRCode.toCanvas(token, { width: 250 }, (error, canvas) => {
           if (error) {
-            messageDiv.textContent = 'Error generating QR code.';
+            authStatusDiv.textContent = 'Error generating QR code.';
             console.error(error);
             return;
           }
           qrcodeDiv.appendChild(canvas);
-          messageDiv.textContent = 'Scan this QR code to receive a discount!';
+          authStatusDiv.textContent = 'Scan this QR code to receive a discount!';
           startCountdown(60);
         });
       } catch (err) {
-        messageDiv.textContent = 'Error saving token to database.';
+        authStatusDiv.textContent = 'Error saving token to database.';
         console.error(err);
       }
     }
@@ -139,7 +155,7 @@
           clearInterval(countdownInterval);
           timerDiv.textContent = 'Expired';
           qrcodeDiv.innerHTML = '';
-          messageDiv.textContent = 'QR Code expired. Generate a new one.';
+          authStatusDiv.textContent = 'QR Code expired. Generate a new one.';
           return;
         }
         updateTimerDisplay(remaining);
