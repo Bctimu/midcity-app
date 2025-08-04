@@ -27,17 +27,17 @@
 <body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen relative">
   <h1 class="text-3xl font-bold mb-4 text-gray-800">Generated QR Code</h1>
   
-  <div id="content-container" class="flex flex-col items-center">
-    <button id="generateBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+  <div id="content-container" class="flex flex-col items-center hidden">
+    <button id="generateBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200">
         Generate QR Code
     </button>
     <div id="qrcode" class="p-4 bg-white rounded-lg shadow-md mt-6"></div>
     <div id="timer" class="mt-4"></div>
   </div>
   
-  <div id="auth-status" class="mt-2 text-gray-700">Please wait, checking user status...</div>
+  <div id="auth-status" class="mt-2 text-gray-700">You must be logged in to access this page.</div>
 
-  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200">
     Go to Login
   </button>
 
@@ -50,6 +50,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getFirestore, doc, setDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+    const BASE_URL = "https://bctimu.github.io/midcity-app";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
@@ -82,19 +84,17 @@
         logoutBtn.classList.remove('hidden');
         loginRedirectBtn.classList.add('hidden');
       } else {
-        if (isAuthChecked) {
-          authStatusDiv.textContent = "Please log in to generate a QR code.";
-          contentContainer.classList.add('hidden');
-          generateBtn.classList.add('hidden');
-          logoutBtn.classList.add('hidden');
-          loginRedirectBtn.classList.remove('hidden');
-        }
+        authStatusDiv.textContent = "Please log in to generate a QR code.";
+        contentContainer.classList.add('hidden');
+        generateBtn.classList.add('hidden');
+        logoutBtn.classList.add('hidden');
+        loginRedirectBtn.classList.remove('hidden');
       }
       isAuthChecked = true;
     });
     
     loginRedirectBtn.addEventListener('click', () => {
-      window.location.href = window.location.origin + "/login.html";
+      window.location.href = BASE_URL + "/login.html";
     });
 
     generateBtn.addEventListener('click', () => {
