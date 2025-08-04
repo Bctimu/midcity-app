@@ -27,7 +27,7 @@
           💾 Download CSV
       </button>
     </div>
-    <p id="statusMessage" class="text-gray-700">Please wait, checking user status...</p>
+    <p id="statusMessage" class="text-gray-700">Loading scan data...</p>
     <div class="w-full overflow-x-auto">
       <table class="bg-white rounded-lg shadow-md">
           <thead>
@@ -39,9 +39,10 @@
     </div>
   </div>
 
-  <div id="auth-status" class="mt-4 text-gray-700">Please wait, checking user status...</div>
+  <!-- Initial state for unauthenticated users -->
+  <div id="auth-status" class="mt-4 text-gray-700">You must be logged in to view analytics.</div>
 
-  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200">
     Go to Login
   </button>
   
@@ -79,7 +80,6 @@
     const loginRedirectBtn = document.getElementById('login-redirect-btn');
     const contentContainer = document.getElementById('content-container');
     let scanDataList = [];
-    let isAuthChecked = false;
 
     async function fetchAnalyticsData(uid) {
         statusMessage.textContent = "Loading scan data...";
@@ -109,7 +109,6 @@
             return;
           }
 
-          // Fetch all unique user IDs from the scans to get their names
           const userIds = new Set();
           querySnapshot.forEach(doc => {
             userIds.add(doc.data().scannedBy);
@@ -131,7 +130,6 @@
             const scannedAtDate = data.scannedAt?.toDate();
             const scannedAtLocale = scannedAtDate?.toLocaleString() || 'N/A';
             
-            // Get names from the users map
             const scannedByUser = usersMap[data.scannedBy];
             const originalUser = usersMap[data.originalUserId];
             const scannedByName = scannedByUser ? (scannedByUser.businessName || scannedByUser.fullName || scannedByUser.email) : 'N/A';
@@ -161,21 +159,20 @@
     
     onAuthStateChanged(auth, async (user) => {
       if (user) {
+        // User is logged in: show content, hide login prompt
         loginRedirectBtn.classList.add('hidden');
         authStatusDiv.classList.add('hidden');
         logoutBtn.classList.remove('hidden');
         contentContainer.classList.remove('hidden');
         fetchAnalyticsData(user.uid);
       } else {
-        if (isAuthChecked) {
-          authStatusDiv.textContent = "You must be logged in to view analytics.";
-          authStatusDiv.classList.remove('hidden');
-          logoutBtn.classList.add('hidden');
-          contentContainer.classList.add('hidden');
-          loginRedirectBtn.classList.remove('hidden');
-        }
+        // User is NOT logged in: show login prompt, hide content
+        authStatusDiv.textContent = "You must be logged in to view analytics.";
+        authStatusDiv.classList.remove('hidden');
+        loginRedirectBtn.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+        contentContainer.classList.add('hidden');
       }
-      isAuthChecked = true;
     });
 
     loginRedirectBtn.addEventListener('click', () => {
