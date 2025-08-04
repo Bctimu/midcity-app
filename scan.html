@@ -57,38 +57,47 @@
     let isAuthChecked = false;
     let cameras = [];
     let currentCameraIndex = 0;
+    
+    // Flag to check if scanner is initialized
+    let isScannerStarted = false;
+
 
     // Authentication state listener
     onAuthStateChanged(auth, async (user) => {
       if (user) {
         // User is signed in. Proceed with scanner logic.
         const uid = user.uid;
-        resultDiv.textContent = "Please grant camera permissions to start the scanner.";
         logoutBtn.classList.remove('hidden');
-        
-        try {
-          cameras = await Html5Qrcode.getCameras();
-          if (cameras.length > 1) {
-            cameraBtn.classList.remove('hidden');
-            cameraBtn.textContent = `Switch to Camera ${currentCameraIndex + 2}`;
-          }
 
-          if (cameras.length) {
-            const cameraId = cameras[currentCameraIndex].id;
-            reader.start(cameraId, { fps: 10, qrbox: 250 }, (decodedText) => onScanSuccess(decodedText, uid));
-          } else {
-            console.error("No cameras found.");
-            resultDiv.textContent = "Error: No cameras found.";
-          }
-        } catch (err) {
-            console.error(err);
-            resultDiv.textContent = "Error: Could not access camera. Please make sure you grant camera permissions and try again.";
+        if (!isScannerStarted) {
+            resultDiv.textContent = "Please grant camera permissions to start the scanner.";
+            try {
+              cameras = await Html5Qrcode.getCameras();
+              if (cameras.length > 1) {
+                cameraBtn.classList.remove('hidden');
+                cameraBtn.textContent = `Switch to Camera ${currentCameraIndex + 2}`;
+              }
+              if (cameras.length) {
+                const cameraId = cameras[currentCameraIndex].id;
+                reader.start(cameraId, { fps: 10, qrbox: 250 }, (decodedText) => onScanSuccess(decodedText, uid));
+                isScannerStarted = true;
+              } else {
+                console.error("No cameras found.");
+                resultDiv.textContent = "Error: No cameras found.";
+              }
+            } catch (err) {
+                console.error(err);
+                resultDiv.textContent = "Error: Could not access camera. Please make sure you grant camera permissions and try again.";
+            }
         }
       } else {
         // Only redirect if the initial check is complete and no user is found.
         if (isAuthChecked) {
           resultDiv.textContent = "Please log in to use the scanner.";
           logoutBtn.classList.add('hidden');
+          if (reader.isScanning) {
+              reader.stop();
+          }
           window.location.href = window.location.origin + "/login.html";
         }
       }
@@ -99,7 +108,13 @@
     async function onScanSuccess(decodedText, uid) {
       resultDiv.textContent = "Checking QR code...";
       reader.pause();
-
+      
+      if (!uid) {
+          resultDiv.textContent = "Authentication error. Please log out and log back in.";
+          reader.resume();
+          return;
+      }
+      
       const docRef = doc(db, "valid_tokens", decodedText);
       const docSnap = await getDoc(docRef);
 
@@ -130,7 +145,7 @@
         resultDiv.textContent = "Scan logged!";
         setTimeout(() => reader.resume(), 1500);
       } catch (err) {
-        resultDiv.textContent = "Error logging scan.";
+        resultDiv.textContent = "Error logging scan. Please check your Firestore security rules.";
         console.error(err);
         reader.resume();
       }
