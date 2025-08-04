@@ -20,21 +20,30 @@
 </head>
 <body class="bg-gray-100 flex flex-col items-center min-h-screen relative">
   <h1 id="pageTitle" class="text-3xl font-bold mb-4 text-gray-800">QR Scan Analytics</h1>
-  <div class="flex space-x-4 mb-4">
-    <button id="downloadBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200">
-        💾 Download CSV
-    </button>
+  
+  <div id="content-container" class="flex flex-col items-center w-full max-w-4xl hidden">
+    <div class="flex space-x-4 mb-4">
+      <button id="downloadBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200">
+          💾 Download CSV
+      </button>
+    </div>
+    <p id="statusMessage" class="text-gray-700">Please wait, checking user status...</p>
+    <div class="w-full overflow-x-auto">
+      <table class="bg-white rounded-lg shadow-md">
+          <thead>
+            <tr><th>Scanned By</th><th>Scanned Token</th><th>Scanned At</th></tr>
+          </thead>
+          <tbody id="scanTableBody">
+          </tbody>
+      </table>
+    </div>
   </div>
-  <p id="statusMessage" class="text-gray-700">Please wait, checking user status...</p>
-  <div class="w-full max-w-4xl overflow-x-auto">
-    <table class="bg-white rounded-lg shadow-md">
-        <thead>
-          <tr><th>Scanned By</th><th>Scanned Token</th><th>Scanned At</th></tr>
-        </thead>
-        <tbody id="scanTableBody">
-        </tbody>
-    </table>
-  </div>
+
+  <div id="auth-status" class="mt-4 text-gray-700">You must be logged in to view analytics.</div>
+
+  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200">
+    Go to Login
+  </button>
   
   <!-- Logout Button -->
   <button id="logout-btn" class="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
@@ -46,7 +55,8 @@
     import { getFirestore, collection, query, where, onSnapshot, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-    // Firebase configuration
+    const BASE_URL = "https://bctimu.github.io/midcity-app";
+
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
       authDomain: "admin-17c3d.firebaseapp.com",
@@ -65,35 +75,33 @@
     const downloadBtn = document.getElementById("downloadBtn");
     const statusMessage = document.getElementById("statusMessage");
     const logoutBtn = document.getElementById('logout-btn');
+    const authStatusDiv = document.getElementById('auth-status');
+    const loginRedirectBtn = document.getElementById('login-redirect-btn');
+    const contentContainer = document.getElementById('content-container');
     let scanDataList = [];
-    let isAuthChecked = false; // New state variable
+    let isAuthChecked = false;
 
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        // User is signed in. Proceed with analytics logic.
-        const uid = user.uid;
+    async function fetchAnalyticsData(uid) {
         statusMessage.textContent = "Loading scan data...";
         downloadBtn.disabled = true;
-        logoutBtn.classList.remove('hidden');
 
         const scansRef = collection(db, "scans");
         let q;
 
-        // Check if the user is a MidCity admin
+        let isAdmin = false;
         const midcityAdminDoc = await getDoc(doc(db, "midcityAdmins", uid));
-        const isAdmin = midcityAdminDoc.exists();
+        isAdmin = midcityAdminDoc.exists();
 
         if (isAdmin) {
           document.getElementById("pageTitle").textContent = "MidCity Admin Analytics";
-          q = query(scansRef); // Admin can view all scans
+          q = query(scansRef);
         } else {
           q = query(scansRef, where("scannedBy", "==", uid));
         }
 
-        // Use a more efficient onSnapshot listener
         onSnapshot(q, (querySnapshot) => {
-          scanDataList = []; // Reset for new data
-          tableBody.innerHTML = ''; // Clear existing rows
+          scanDataList = [];
+          tableBody.innerHTML = '';
 
           if (querySnapshot.empty) {
             statusMessage.textContent = "No scan data found.";
@@ -108,7 +116,7 @@
 
             scanDataList.push({
               scannedBy: data.scannedBy,
-              token: data.token,
+              scannedToken: data.token,
               scannedAt: scannedAtDate?.toISOString() || 'N/A'
             });
 
@@ -124,24 +132,38 @@
           statusMessage.textContent = `Found ${scanDataList.length} scans.`;
           downloadBtn.disabled = false;
         });
-
+    }
+    
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        loginRedirectBtn.classList.add('hidden');
+        authStatusDiv.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+        contentContainer.classList.remove('hidden');
+        fetchAnalyticsData(user.uid);
       } else {
-        // Only redirect if the initial check is complete and no user is found.
         if (isAuthChecked) {
-          window.location.href = window.location.origin + "/login.html";
+          authStatusDiv.textContent = "You must be logged in to view analytics.";
+          authStatusDiv.classList.remove('hidden');
+          logoutBtn.classList.add('hidden');
+          contentContainer.classList.add('hidden');
+          loginRedirectBtn.classList.remove('hidden');
         }
       }
       isAuthChecked = true;
     });
 
-    // Download CSV
+    loginRedirectBtn.addEventListener('click', () => {
+      window.location.href = BASE_URL + "/login.html";
+    });
+
     downloadBtn.addEventListener("click", () => {
       const escapeCsvField = (field) => `"${String(field).replace(/"/g, '""')}"`;
       
       const csvContent = "data:text/csv;charset=utf-8," +
-        ["scannedBy,token,scannedAt"]
+        ["scannedBy,scannedToken,scannedAt"]
           .concat(scanDataList.map(d =>
-            `${escapeCsvField(d.scannedBy)},${escapeCsvField(d.token)},${escapeCsvField(d.scannedAt)}`
+            `${escapeCsvField(d.scannedBy)},${escapeCsvField(d.scannedToken)},${escapeCsvField(d.scannedAt)}`
           )).join("\n");
 
       const encodedUri = encodeURI(csvContent);
@@ -153,11 +175,9 @@
       document.body.removeChild(link);
     });
 
-    // Logout button event listener
     logoutBtn.addEventListener('click', async () => {
       try {
         await signOut(auth);
-        // The onAuthStateChanged listener will handle the redirect.
       } catch (error) {
         console.error("Error signing out: ", error);
         alert('Could not log out. Please try again.');
@@ -166,4 +186,3 @@
   </script>
 </body>
 </html>
-
