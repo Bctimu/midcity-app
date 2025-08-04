@@ -108,14 +108,14 @@
 
             scanDataList.push({
               scannedBy: data.scannedBy,
-              scannedToken: data.scannedToken,
+              token: data.token,
               scannedAt: scannedAtDate?.toISOString() || 'N/A'
             });
 
             const row = document.createElement('tr');
             row.innerHTML = `
               <td>${data.scannedBy}</td>
-              <td>${data.scannedToken}</td>
+              <td>${data.token}</td>
               <td>${scannedAtLocale}</td>
             `;
             tableBody.appendChild(row);
@@ -139,9 +139,9 @@
       const escapeCsvField = (field) => `"${String(field).replace(/"/g, '""')}"`;
       
       const csvContent = "data:text/csv;charset=utf-8," +
-        ["scannedBy,scannedToken,scannedAt"]
+        ["scannedBy,token,scannedAt"]
           .concat(scanDataList.map(d =>
-            `${escapeCsvField(d.scannedBy)},${escapeCsvField(d.scannedToken)},${escapeCsvField(d.scannedAt)}`
+            `${escapeCsvField(d.scannedBy)},${escapeCsvField(d.token)},${escapeCsvField(d.scannedAt)}`
           )).join("\n");
 
       const encodedUri = encodeURI(csvContent);
@@ -166,3 +166,4 @@
   </script>
 </body>
 </html>
+
