@@ -25,9 +25,9 @@
     </button>
   </div>
 
-  <div id="auth-status" class="mt-4 text-gray-700">Please wait, checking user status...</div>
+  <div id="auth-status" class="mt-4 text-gray-700">You must be logged in to use the scanner.</div>
   
-  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+  <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200">
     Go to Login
   </button>
 
@@ -41,7 +41,7 @@
     import { getFirestore, doc, getDoc, collection, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-    const TESTING_MODE = true;
+    const BASE_URL = "https://bctimu.github.io/midcity-app";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCP_EHp-NdHnwyOZ49_OOEiqLUBV2irgeg",
@@ -96,41 +96,32 @@
       }
     };
 
-    if (TESTING_MODE) {
-      const uid = "TESTING-UID";
-      authStatusDiv.textContent = "Testing mode is ON. Scanner is starting...";
-      logoutBtn.classList.add('hidden');
-      loginRedirectBtn.classList.add('hidden');
-      contentContainer.classList.remove('hidden');
-      startScanner(uid);
-    } else {
-      onAuthStateChanged(auth, (user) => {
-        if (user) {
-          const uid = user.uid;
-          authStatusDiv.textContent = "Authentication successful. Starting scanner...";
-          logoutBtn.classList.remove('hidden');
-          loginRedirectBtn.classList.add('hidden');
-          contentContainer.classList.remove('hidden');
-          if (!isScannerStarted) {
-            startScanner(uid);
-          }
-        } else {
-          if (isAuthChecked) {
-            authStatusDiv.textContent = "You must be logged in to use the scanner.";
-            logoutBtn.classList.add('hidden');
-            contentContainer.classList.add('hidden');
-            loginRedirectBtn.classList.remove('hidden');
-            if (reader.isScanning) {
-              reader.stop().catch(err => console.error("Error stopping scanner: ", err));
-            }
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const uid = user.uid;
+        authStatusDiv.textContent = "Authentication successful. Starting scanner...";
+        logoutBtn.classList.remove('hidden');
+        loginRedirectBtn.classList.add('hidden');
+        contentContainer.classList.remove('hidden');
+        if (!isScannerStarted) {
+          startScanner(uid);
+        }
+      } else {
+        if (isAuthChecked) {
+          authStatusDiv.textContent = "You must be logged in to use the scanner.";
+          logoutBtn.classList.add('hidden');
+          contentContainer.classList.add('hidden');
+          loginRedirectBtn.classList.remove('hidden');
+          if (reader.isScanning) {
+            reader.stop().catch(err => console.error("Error stopping scanner: ", err));
           }
         }
-        isAuthChecked = true;
-      });
-    }
+      }
+      isAuthChecked = true;
+    });
 
     loginRedirectBtn.addEventListener('click', () => {
-      window.location.href = window.location.origin + "/login.html";
+      window.location.href = BASE_URL + "/login.html";
     });
 
     async function onScanSuccess(decodedText, uid) {
