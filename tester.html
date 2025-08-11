@@ -125,19 +125,22 @@
       authStatusDiv.textContent = 'Generating QR code...';
       timerDiv.textContent = '';
 
-      const token = crypto.randomUUID();
+      const userDocRef = doc(db, 'users', uid);
+      const userDoc = await getDoc(userDocRef);
+      const username = userDoc.exists() ? userDoc.data().username : 'unknown';
+
       const createdAt = new Date();
       const expiresAt = new Date(createdAt.getTime() + 1 * 60 * 1000);
       const tokenData = {
-        token,
+        token: username,
         userId: uid,
         createdAt: Timestamp.fromDate(createdAt),
         expiresAt: Timestamp.fromDate(expiresAt),
       };
 
       try {
-        await setDoc(doc(db, 'valid_tokens', token), tokenData);
-        QRCode.toCanvas(token, { width: 250 }, (error, canvas) => {
+        await setDoc(doc(db, 'valid_tokens', username), tokenData);
+        QRCode.toCanvas(username, { width: 250 }, (error, canvas) => {
           if (error) {
             authStatusDiv.textContent = 'Error generating QR code.';
             console.error(error);
