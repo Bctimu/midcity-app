@@ -81,9 +81,9 @@
         // Fetch the user's document to get their name
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
-        const username = userDoc.exists() ? userDoc.data().username : 'resident';
+        const fullName = userDoc.exists() ? userDoc.data().fullName : 'resident';
 
-        authStatusDiv.textContent = `Welcome, ${username}! Click the button below to generate your QR code.`;
+        authStatusDiv.textContent = `Welcome, ${fullName}! Click the button below to generate your QR code.`;
         contentContainer.classList.remove('hidden');
         generateBtn.classList.remove('hidden');
         logoutBtn.classList.remove('hidden');
@@ -127,20 +127,20 @@
 
       const userDocRef = doc(db, 'users', uid);
       const userDoc = await getDoc(userDocRef);
-      const username = userDoc.exists() ? userDoc.data().username : 'unknown';
+      const fullName = userDoc.exists() ? userDoc.data().fullName : 'unknown';
 
       const createdAt = new Date();
       const expiresAt = new Date(createdAt.getTime() + 1 * 60 * 1000);
       const tokenData = {
-        token: username,
+        token: fullName,
         userId: uid,
         createdAt: Timestamp.fromDate(createdAt),
         expiresAt: Timestamp.fromDate(expiresAt),
       };
 
       try {
-        await setDoc(doc(db, 'valid_tokens', username), tokenData);
-        QRCode.toCanvas(username, { width: 250 }, (error, canvas) => {
+        await setDoc(doc(db, 'valid_tokens', fullName), tokenData);
+        QRCode.toCanvas(fullName, { width: 250 }, (error, canvas) => {
           if (error) {
             authStatusDiv.textContent = 'Error generating QR code.';
             console.error(error);
