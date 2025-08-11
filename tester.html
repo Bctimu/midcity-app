@@ -2,50 +2,45 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Analytics</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Generated QR Code</title>
+  
+  <!-- Use Tailwind CSS for a clean, mobile-first design -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Modular Firebase SDKs -->
   <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
   <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
   <script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- QRCode.js -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
   <style>
-    body { font-family: sans-serif; padding: 2rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
-    th { background-color: #f2f2f2; }
-    button { padding: 0.5rem 1rem; margin-bottom: 1rem; cursor: pointer; }
-    #statusMessage { font-style: italic; color: #555; }
+    body { font-family: Arial, sans-serif; padding: 2rem; text-align: center; }
+    #qrcode { margin-top: 20px; }
+    button { font-size: 1rem; padding: 0.5rem 1rem; margin-top: 1rem; cursor: pointer; }
+    #message { margin-top: 10px; font-weight: bold; }
+    #timer { font-size: 1.5rem; margin-top: 10px; color: #000000; }
   </style>
 </head>
-<body class="bg-gray-100 flex flex-col items-center min-h-screen relative">
-  <h1 id="pageTitle" class="text-3xl font-bold mb-4 text-gray-800">QR Scan Analytics</h1>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen relative">
+  <h1 class="text-3xl font-bold mb-4 text-gray-800">Generated QR Code</h1>
   
-  <div id="content-container" class="flex flex-col items-center w-full max-w-4xl hidden">
-    <div class="flex space-x-4 mb-4">
-      <button id="downloadBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200">
-          💾 Download CSV
-      </button>
-    </div>
-    <p id="statusMessage" class="text-gray-700">Please wait, checking user status...</p>
-    <div class="w-full overflow-x-auto">
-      <table class="bg-white rounded-lg shadow-md">
-          <thead>
-            <tr><th>Scanned By (Business Name)</th><th>Resident Name</th><th>Scanned Token</th><th>Scanned At</th></tr>
-          </thead>
-          <tbody id="scanTableBody">
-          </tbody>
-      </table>
-    </div>
+  <div id="content-container" class="flex flex-col items-center hidden">
+    <button id="generateBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
+        Generate QR Code
+    </button>
+    <div id="qrcode" class="p-4 bg-white rounded-lg shadow-md mt-6"></div>
+    <div id="timer" class="mt-4"></div>
   </div>
-
-  <!-- Initial state for unauthenticated users -->
-  <div id="auth-status" class="mt-4 text-gray-700 hidden">You must be logged in to view analytics.</div>
+  
+  <div id="auth-status" class="mt-2 text-gray-700">Please wait, checking user status...</div>
 
   <button id="login-redirect-btn" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
     Go to Login
   </button>
-  
+
   <!-- Logout Button -->
   <button id="logout-btn" class="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 hidden">
     Log Out
@@ -53,7 +48,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getFirestore, collection, query, where, onSnapshot, getDoc, doc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, Timestamp, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
     const BASE_URL = "https://bctimu.github.io/midcity-app";
@@ -71,130 +66,48 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
-
-    const tableBody = document.getElementById("scanTableBody");
-    const downloadBtn = document.getElementById("downloadBtn");
-    const statusMessage = document.getElementById("statusMessage");
-    const logoutBtn = document.getElementById('logout-btn');
+    const generateBtn = document.getElementById('generateBtn');
+    const qrcodeDiv = document.getElementById('qrcode');
     const authStatusDiv = document.getElementById('auth-status');
+    const timerDiv = document.getElementById('timer');
+    const logoutBtn = document.getElementById('logout-btn');
     const loginRedirectBtn = document.getElementById('login-redirect-btn');
     const contentContainer = document.getElementById('content-container');
-    let scanDataList = [];
+    let countdownInterval = null;
+    let isAuthChecked = false;
 
-    async function fetchAnalyticsData(uid) {
-        statusMessage.textContent = "Loading scan data...";
-        downloadBtn.disabled = true;
-
-        const scansRef = collection(db, "scans");
-        let q;
-
-        let isAdmin = false;
-        const midcityAdminDoc = await getDoc(doc(db, "midcityAdmins", uid));
-        isAdmin = midcityAdminDoc.exists();
-
-        if (isAdmin) {
-          document.getElementById("pageTitle").textContent = "MidCity Admin Analytics";
-          q = query(scansRef);
-        } else {
-          q = query(scansRef, where("scannedBy", "==", uid));
-        }
-
-        onSnapshot(q, async (querySnapshot) => {
-          scanDataList = [];
-          tableBody.innerHTML = '';
-
-          if (querySnapshot.empty) {
-            statusMessage.textContent = "No scan data found.";
-            downloadBtn.disabled = true;
-            return;
-          }
-
-          const userIds = new Set();
-          querySnapshot.forEach(doc => {
-            userIds.add(doc.data().scannedBy);
-            userIds.add(doc.data().originalUserId);
-          });
-          
-          let usersMap = {};
-          if (userIds.size > 0) {
-              const usersRef = collection(db, "users");
-              const userQuery = query(usersRef, where("__name__", "in", Array.from(userIds)));
-              const userDocs = await getDocs(userQuery);
-              userDocs.forEach(userDoc => {
-                  usersMap[userDoc.id] = userDoc.data();
-              });
-          }
-
-          querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            const scannedAtDate = data.scannedAt?.toDate();
-            const scannedAtLocale = scannedAtDate?.toLocaleString() || 'N/A';
-            
-            const scannedByUser = usersMap[data.scannedBy];
-            const originalUser = usersMap[data.originalUserId];
-            const scannedByName = scannedByUser ? (scannedByUser.businessName || scannedByUser.username || scannedByUser.email) : 'N/A';
-            const residentName = originalUser ? originalUser.username : 'N/A'; // Changed from fullName to username
-            
-            scanDataList.push({
-              scannedBy: scannedByName,
-              residentName: residentName,
-              scannedToken: data.token,
-              scannedAt: scannedAtDate?.toISOString() || 'N/A'
-            });
-
-            const row = document.createElement('tr');
-            row.innerHTML = `
-              <td>${scannedByName}</td>
-              <td>${residentName}</td>
-              <td>${data.token}</td>
-              <td>${scannedAtLocale}</td>
-            `;
-            tableBody.appendChild(row);
-          });
-
-          statusMessage.textContent = `Found ${scanDataList.length} scans.`;
-          downloadBtn.disabled = false;
-        });
-    }
-    
     onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // User is logged in: hide login prompt, show content
-        authStatusDiv.classList.add('hidden');
-        loginRedirectBtn.classList.add('hidden');
-        logoutBtn.classList.remove('hidden');
-        contentContainer.classList.remove('hidden');
-        fetchAnalyticsData(user.uid);
-      } else {
-        // User is NOT logged in: show login prompt, hide content
-        authStatusDiv.classList.remove('hidden');
-        authStatusDiv.textContent = "You must be logged in to view analytics.";
-        loginRedirectBtn.classList.remove('hidden');
-        logoutBtn.classList.add('hidden');
-        contentContainer.classList.add('hidden');
-      }
-    });
+        // Fetch the user's document to get their name
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        const username = userDoc.exists() ? userDoc.data().username : 'resident';
 
+        authStatusDiv.textContent = `Welcome, ${username}! Click the button below to generate your QR code.`;
+        contentContainer.classList.remove('hidden');
+        generateBtn.classList.remove('hidden');
+        logoutBtn.classList.remove('hidden');
+        loginRedirectBtn.classList.add('hidden');
+      } else {
+        if (isAuthChecked) {
+          authStatusDiv.textContent = "Please log in to generate a QR code.";
+          contentContainer.classList.add('hidden');
+          generateBtn.classList.add('hidden');
+          logoutBtn.classList.add('hidden');
+          loginRedirectBtn.classList.remove('hidden');
+        }
+      }
+      isAuthChecked = true;
+    });
+    
     loginRedirectBtn.addEventListener('click', () => {
       window.location.href = BASE_URL + "/login.html";
     });
 
-    downloadBtn.addEventListener("click", () => {
-      const escapeCsvField = (field) => `"${String(field).replace(/"/g, '""')}"`;
-      
-      const csvContent = "data:text/csv;charset=utf-8," +
-        ["scannedBy,residentName,scannedToken,scannedAt"]
-          .concat(scanDataList.map(d =>
-            `${escapeCsvField(d.scannedBy)},${escapeCsvField(d.residentName)},${escapeCsvField(d.scannedToken)},${escapeCsvField(d.scannedAt)}`
-          )).join("\n");
-
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `scan_data_${new Date().toISOString()}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+    generateBtn.addEventListener('click', () => {
+      if (auth.currentUser) {
+        generateAndDisplayQRCode(auth.currentUser.uid);
+      }
     });
 
     logoutBtn.addEventListener('click', async () => {
@@ -205,6 +118,62 @@
         alert('Could not log out. Please try again.');
       }
     });
+
+    async function generateAndDisplayQRCode(uid) {
+      clearInterval(countdownInterval);
+      qrcodeDiv.innerHTML = '';
+      authStatusDiv.textContent = 'Generating QR code...';
+      timerDiv.textContent = '';
+
+      const token = crypto.randomUUID();
+      const createdAt = new Date();
+      const expiresAt = new Date(createdAt.getTime() + 1 * 60 * 1000);
+      const tokenData = {
+        token,
+        userId: uid,
+        createdAt: Timestamp.fromDate(createdAt),
+        expiresAt: Timestamp.fromDate(expiresAt),
+      };
+
+      try {
+        await setDoc(doc(db, 'valid_tokens', token), tokenData);
+        QRCode.toCanvas(token, { width: 250 }, (error, canvas) => {
+          if (error) {
+            authStatusDiv.textContent = 'Error generating QR code.';
+            console.error(error);
+            return;
+          }
+          qrcodeDiv.appendChild(canvas);
+          authStatusDiv.textContent = 'Scan this QR code to receive a discount!';
+          startCountdown(60);
+        });
+      } catch (err) {
+        authStatusDiv.textContent = 'Error saving token to database.';
+        console.error(err);
+      }
+    }
+
+    function startCountdown(seconds) {
+      let remaining = seconds;
+      updateTimerDisplay(remaining);
+      countdownInterval = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          clearInterval(countdownInterval);
+          timerDiv.textContent = 'Expired';
+          qrcodeDiv.innerHTML = '';
+          authStatusDiv.textContent = 'QR Code expired. Generate a new one.';
+          return;
+        }
+        updateTimerDisplay(remaining);
+      }, 1000);
+    }
+    
+    function updateTimerDisplay(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      timerDiv.textContent = `Expires in ${mins}:${secs.toString().padStart(2, '0')}`;
+    }
   </script>
 </body>
 </html>
